@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build release artifacts on Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Resolve version from the tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          python tools/set_version.py "$VERSION"
+          python tools/set_version.py "$VERSION" --check
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Quality gate
+        shell: bash
+        run: |
+          ruff check retvia tests tools
+          ruff format --check retvia tests tools
+          mypy retvia
+          pytest -q
+
+      - name: Inject the production public verification key
+        shell: bash
+        env:
+          PRODUCTION_PUBLIC_KEY: ${{ secrets.RETVIA_LICENSE_PUBLIC_KEY }}
+        run: |
+          if [ -z "$PRODUCTION_PUBLIC_KEY" ]; then
+            echo "::error::Secret RETVIA_LICENSE_PUBLIC_KEY is not set."
+            echo "Export it from the owner License Generator and add it as a repository secret."
+            echo "Refusing to publish a build that cannot verify real licenses."
+            exit 1
+          fi
+          python - <<'PY'
+          import json, os, pathlib
+          key = os.environ["PRODUCTION_PUBLIC_KEY"].strip()
+          document = {
+              "product_id": "merqo-retvia",
+              "public_key": key,
+              "algorithm": "Ed25519",
+              "development": False,
+          }
+          target = pathlib.Path("retvia/assets/license_public_key.json")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("Production public key injected (public half only).")
+          PY
+
+      - name: Build the application
+        run: pyinstaller packaging/retvia.spec --noconfirm --clean
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=${{ steps.version.outputs.value }}" "/DSourceDir=..\dist\Retvia" "/DOutputDir=..\dist\installer" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+
+      - name: Silent install and verify
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\installer\*.exe | Select-Object -First 1
+          $target = Join-Path $env:RUNNER_TEMP "RetviaRelease"
+          Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$target" -Wait
+          $exe = Join-Path $target "Retvia.exe"
+          if (-not (Test-Path $exe)) { throw "Retvia.exe was not installed" }
+          python tools/verify_install.py --exe $exe --screenshots build/release-screenshots --data-dir "$env:RUNNER_TEMP\retvia-release-data"
+          if ($LASTEXITCODE -ne 0) { throw "Release verification failed" }
+          $marker = Join-Path $env:RUNNER_TEMP "retvia-release-data\data\keep.txt"
+          Set-Content -Path $marker -Value "preserve"
+          $uninstall = Get-ChildItem $target -Filter "unins*.exe" | Select-Object -First 1
+          Start-Process -FilePath $uninstall.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          Start-Sleep -Seconds 3
+          if (-not (Test-Path $marker)) { throw "UNINSTALL DESTROYED USER DATA" }
+          echo "Install, launch, screen render and data-preserving uninstall all verified."
+
+      - name: Portable archive and checksums
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/Retvia/* -DestinationPath "dist/Retvia-${{ steps.version.outputs.value }}-windows-portable.zip"
+          New-Item -ItemType Directory -Force -Path dist/checksums | Out-Null
+          Get-ChildItem dist/installer/*.exe, dist/*.zip | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -Encoding ascii -Append dist/checksums/SHA256SUMS.txt
+          }
+          Get-Content dist/checksums/SHA256SUMS.txt
+
+      - name: Assert no owner-only artifacts are present
+        shell: bash
+        run: |
+          set -e
+          if find dist -iname '*License-Generator*' -o -iname '*owner*' | grep -q .; then
+            echo "::error::Owner-only artifact found in the release output"; exit 1
+          fi
+          echo "Release output contains customer artifacts only."
+
+      - name: Upload release screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-screenshots
+          path: build/release-screenshots
+          retention-days: 90
+
+      - name: Publish the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Retvia ${{ steps.version.outputs.value }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/installer/*.exe
+            dist/*-windows-portable.zip
+            dist/checksums/SHA256SUMS.txt

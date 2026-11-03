@@ -212,6 +212,7 @@ class FinanceService:
                  FROM sales WHERE status<>'cancelled' AND sale_date=?""",
             (today_iso,),
         )
+        assert today_sales is not None  # an aggregate query always yields one row
         return {
             "range": {"start": start, "end": end},
             "today": {

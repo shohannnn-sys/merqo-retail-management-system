@@ -190,15 +190,7 @@ class SalesView(QWidget):
             show_error(self, "প্রথমে সেটিংস থেকে প্রিন্টার নির্বাচন করুন")
             return
         try:
-            from ...printing.documents import print_html, receipt_html
-
-            sale = self.services.sales.get(record["id"])
-            print_html(
-                receipt_html(sale, self.services.profile.get(), settings, copy_label="পুনরায় মুদ্রিত"),
-                printer_name=settings.get("printer_name"),
-                width_mm=float(settings.get("paper_width_mm", "80")),
-                copies=1,
-            )
+            self.services.print_receipt(record["id"], copy_label="পুনরায় মুদ্রিত কপি")
             show_info(self, "রিসিট প্রিন্ট করা হয়েছে")
         except (RuntimeError, OSError, ImportError) as exc:
             show_error(self, f"প্রিন্ট করা যায়নি: {exc}")

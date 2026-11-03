@@ -485,7 +485,7 @@ class PosView(QWidget):
         )
 
     def _recalculate(self) -> None:
-        rows = []
+        rows: list[dict[str, Any]] = []
         totals = None
         if self._cart:
             try:
@@ -594,21 +594,10 @@ class PosView(QWidget):
         self.search.setFocus()
 
     def _print_receipt(self, sale_id: int) -> bool:
-        settings = self.services.settings
-        if not settings.get("printer_name"):
+        if not self.services.settings.get("printer_name"):
             return False
         try:
-            from ...printing.documents import print_html, receipt_html
-
-            sale = self.services.sales.get(sale_id)
-            html_text = receipt_html(sale, self.services.profile.get(), settings)
-            print_html(
-                html_text,
-                printer_name=settings.get("printer_name"),
-                width_mm=float(settings.get("paper_width_mm", "80")),
-                margin_mm=float(settings.get_int("receipt_margin_mm", 3)),
-                copies=settings.get_int("receipt_copies", 1),
-            )
+            self.services.print_receipt(sale_id)
             return True
         except (RuntimeError, OSError, ImportError) as exc:
             show_error(self, f"রিসিট প্রিন্ট করা যায়নি: {exc}")

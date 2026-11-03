@@ -270,13 +270,18 @@ class DataTable(QTableWidget):
             if column.width:
                 self.setColumnWidth(index, column.width)
         self.cellDoubleClicked.connect(self._emit_activated)
-        self._empty = QLabel("কোনো তথ্য নেই")
+        self._empty = QLabel("কোনো তথ্য নেই", self.viewport())
         self._empty.setObjectName("EmptyState")
         self._empty.setAlignment(Qt.AlignCenter)
         self._empty.setVisible(False)
+        self._empty.setGeometry(self.viewport().rect())
 
     def empty_widget(self) -> QWidget:
         return self._empty
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        self._empty.setGeometry(self.viewport().rect())
 
     def format_cell(self, column: TableColumn, value: Any) -> str:
         if value is None:
@@ -296,7 +301,9 @@ class DataTable(QTableWidget):
         for row_index, row in enumerate(self._rows):
             for col_index, column in enumerate(self._columns):
                 text = self.format_cell(column, row.get(column.key))
-                item = QTableWidgetItem(text)
+                raw = row.get(column.key)
+                numeric = column.kind in ("money", "qty", "int", "percent") and isinstance(raw, int)
+                item = NumericTableItem(text) if numeric else QTableWidgetItem(text)
                 if column.kind in ("money", "qty", "int", "percent"):
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 elif column.align == "center":
@@ -304,7 +311,6 @@ class DataTable(QTableWidget):
                 else:
                     item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
                 item.setToolTip(text)
-                raw = row.get(column.key)
                 if isinstance(raw, int | float):
                     item.setData(Qt.UserRole, raw)
                 self.setItem(row_index, col_index, item)

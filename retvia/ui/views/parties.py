@@ -191,6 +191,7 @@ class _PartyTab(QWidget):
         values = FormDialog.ask("নতুন এন্ট্রি", self._fields(), self)
         if values is None:
             return
+        data: CustomerInput | SupplierInput
         if self.is_customer:
             data = CustomerInput(
                 name=values["name"],
@@ -222,6 +223,7 @@ class _PartyTab(QWidget):
         values = FormDialog.ask("সম্পাদনা", self._fields(record), self)
         if values is None:
             return
+        data: CustomerInput | SupplierInput
         if self.is_customer:
             data = CustomerInput(
                 name=values["name"],

@@ -142,7 +142,7 @@ class ExportService:
         from decimal import Decimal
 
         for row in result.rows:
-            values = []
+            values: list[Any] = []
             for column in result.columns:
                 raw = row.get(column.key)
                 if column.kind == "money" and raw is not None:
@@ -171,7 +171,7 @@ class ExportService:
                     cell.alignment = Alignment(horizontal="left", vertical="center")
 
         if result.totals:
-            total_row = [""] * len(result.columns)
+            total_row: list[Any] = [""] * len(result.columns)
             total_row[0] = "মোট"
             for index, column in enumerate(result.columns):
                 if column.key in result.totals:

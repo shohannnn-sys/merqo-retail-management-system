@@ -179,14 +179,15 @@ class LoginDialog(QDialog):
 
     def _submit(self) -> None:
         try:
-            self.user = self.services.login(self.username.text(), self.password.text())
+            user = self.services.login(self.username.text(), self.password.text())
+            self.user = user
         except RetviaError as exc:
             self.error.setText(exc.message)
             self.error.setVisible(True)
             self.password.selectAll()
             self.password.setFocus()
             return
-        if self.user.get("must_change"):
+        if user.get("must_change"):
             values = FormDialog.ask(
                 "পাসওয়ার্ড পরিবর্তন আবশ্যক",
                 [
@@ -198,7 +199,7 @@ class LoginDialog(QDialog):
                 self.user = None
                 return
             try:
-                self.services.users.set_password(self.user["id"], values["password"])
+                self.services.users.set_password(user["id"], values["password"])
             except RetviaError as exc:
                 show_error(self, exc)
                 self.user = None

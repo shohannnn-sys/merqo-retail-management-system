@@ -1,0 +1,91 @@
+name: Owner tool build (private)
+
+# Builds the owner-only License Generator EXE.
+#
+# The generator SOURCE is never committed. It is stored as the repository
+# secret OWNER_TOOL_SOURCE_B64 (created by tools/pack_owner_tool.py) and is
+# decoded into the runner only for the duration of this job.
+#
+# The artifact is NEVER attached to a release. Download it, then let it expire.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build owner License Generator
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Restore the private owner source
+        shell: bash
+        env:
+          OWNER_TOOL_SOURCE_B64: ${{ secrets.OWNER_TOOL_SOURCE_B64 }}
+        run: |
+          if [ -z "$OWNER_TOOL_SOURCE_B64" ]; then
+            echo "::error::Secret OWNER_TOOL_SOURCE_B64 is not set."
+            echo "Run: python tools/pack_owner_tool.py  and store the output as that secret."
+            exit 1
+          fi
+          mkdir -p owner-tools
+          python - <<'PY'
+          import base64, io, os, zipfile
+          blob = base64.b64decode(os.environ["OWNER_TOOL_SOURCE_B64"])
+          with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+              archive.extractall("owner-tools")
+          print("Owner source restored into the runner only.")
+          PY
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Test the owner vault before building
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }};${{ github.workspace }}/owner-tools
+        run: |
+          if [ -d owner-tools/tests ]; then pytest owner-tools/tests -q; else echo "No owner tests in the bundle."; fi
+
+      - name: Build the owner EXE
+        run: pyinstaller packaging/owner_generator.spec --noconfirm --clean
+
+      - name: Verify the EXE starts
+        shell: pwsh
+        run: |
+          $exe = "dist/Retvia-License-Generator/Retvia-License-Generator.exe"
+          if (-not (Test-Path $exe)) { throw "Owner EXE was not produced" }
+          echo "Owner EXE built: $((Get-Item $exe).Length) bytes"
+
+      - name: Archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/Retvia-License-Generator/* -DestinationPath "Retvia-License-Generator-OWNER-ONLY.zip"
+          $hash = (Get-FileHash "Retvia-License-Generator-OWNER-ONLY.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  Retvia-License-Generator-OWNER-ONLY.zip" | Out-File -Encoding ascii OWNER-ONLY-SHA256.txt
+          Get-Content OWNER-ONLY-SHA256.txt
+
+      - name: Upload as a short-lived private artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OWNER-ONLY-license-generator
+          path: |
+            Retvia-License-Generator-OWNER-ONLY.zip
+            OWNER-ONLY-SHA256.txt
+          retention-days: 7
+
+      - name: Shred the restored source
+        if: always()
+        shell: bash
+        run: rm -rf owner-tools

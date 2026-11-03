@@ -89,7 +89,9 @@ def run(argv: list[str] | None = None) -> int:
 
     load_fonts()
     app.setStyleSheet(stylesheet())
-    icon_path = Path(__file__).parent / "assets" / "icon.png"
+    from .paths import resource_path
+
+    icon_path = resource_path("assets", "icon.png")
     if icon_path.is_file():
         app.setWindowIcon(QIcon(str(icon_path)))
 
@@ -97,7 +99,7 @@ def run(argv: list[str] | None = None) -> int:
     from .ui.main_window import MainWindow
 
     if not services.users.has_owner() and not smoke:
-        setup = FirstRunDialog()
+        setup = FirstRunDialog(services)
         if setup.exec() != QDialog.Accepted:
             services.close()
             return 0

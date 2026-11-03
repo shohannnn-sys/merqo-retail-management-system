@@ -72,3 +72,9 @@ Thumbs.db
 .vite/
 .turbo/
 .venv/
+
+# Owner-only license generator: source and artifacts must never be public.
+owner-tools/
+*.retvia-backup
+owner-vault*.json
+issuance.db*

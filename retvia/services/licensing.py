@@ -198,8 +198,11 @@ def collect_hardware_components() -> dict[str, str]:
         try:
             import winreg  # type: ignore[import-not-found]
 
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as key:
-                components["machine_guid"] = str(winreg.QueryValueEx(key, "MachineGuid")[0])
+            with winreg.OpenKey(  # type: ignore[attr-defined]
+                winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
+                r"SOFTWARE\Microsoft\Cryptography",
+            ) as key:
+                components["machine_guid"] = str(winreg.QueryValueEx(key, "MachineGuid")[0])  # type: ignore[attr-defined]
         except Exception:  # noqa: BLE001 - missing key must not block activation
             pass
         try:

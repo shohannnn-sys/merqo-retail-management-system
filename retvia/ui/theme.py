@@ -6,7 +6,7 @@ radii and typography live here so every screen shares one visual language.
 
 from __future__ import annotations
 
-from pathlib import Path
+from ..paths import resource_path
 
 # ---------------------------------------------------------------- design tokens
 COLORS = {
@@ -40,7 +40,7 @@ RADIUS = {"sm": 6, "md": 10, "lg": 14}
 FONT_SIZE = {"xs": 11, "sm": 12, "base": 13, "md": 15, "lg": 18, "xl": 22, "xxl": 28}
 
 FONT_FAMILY = "'Noto Sans Bengali', 'Nirmala UI', 'Segoe UI', sans-serif"
-FONT_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+FONT_DIR = resource_path("assets", "fonts")
 
 
 def load_fonts() -> list[str]:
@@ -76,7 +76,19 @@ def stylesheet() -> str:
         color: {c["sidebar_text"]}; font-size: {FONT_SIZE["xs"]}px;
         padding: 0 {SPACE["lg"]}px {SPACE["md"]}px {SPACE["lg"]}px; background: transparent;
     }}
-    #Sidebar QLabel {{ background: transparent; }}
+    #Sidebar QLabel {{ background: transparent; color: {c["sidebar_text"]}; }}
+    #SidebarProduct {{
+        color: #8FA3BA; font-size: {FONT_SIZE["xs"]}px;
+        padding: 0 {SPACE["lg"]}px; background: transparent;
+    }}
+    #SidebarUser {{
+        color: {c["sidebar_text"]}; font-size: {FONT_SIZE["sm"]}px;
+        padding: {SPACE["sm"]}px {SPACE["lg"]}px; background: transparent;
+    }}
+    #Sidebar QPushButton#Ghost {{ color: {c["sidebar_text"]}; text-align: left; }}
+    #Sidebar QPushButton#Ghost:hover {{ background: {c["sidebar_hover"]}; color: #FFFFFF; }}
+    #Sidebar QScrollArea, #Sidebar QScrollArea > QWidget > QWidget {{ background: transparent; }}
+    #TopbarBusiness {{ font-size: {FONT_SIZE["md"]}px; font-weight: 700; }}
     #NavButton {{
         background: transparent; color: {c["sidebar_text"]};
         text-align: left; padding: 9px {SPACE["lg"]}px;
@@ -193,6 +205,23 @@ def stylesheet() -> str:
         font-weight: 700; font-size: {FONT_SIZE["sm"]}px;
     }}
     QTableCornerButton::section {{ background: {c["surface_alt"]}; border: none; }}
+    QListWidget {{
+        background: {c["surface"]}; border: 1px solid {c["border"]};
+        border-radius: {RADIUS["sm"]}px; padding: 4px; outline: none;
+    }}
+    QListWidget::item {{ padding: 7px 8px; border-radius: 4px; }}
+    QListWidget::item:selected {{ background: {c["primary_soft"]}; color: {c["text"]}; }}
+    QListWidget::item:hover {{ background: {c["surface_alt"]}; }}
+    QSplitter::handle {{ background: {c["border"]}; }}
+    QSplitter::handle:horizontal {{ width: 1px; }}
+    QSplitter::handle:vertical {{ height: 1px; }}
+    QStatusBar {{ background: {c["surface"]}; border-top: 1px solid {c["border"]};
+                  color: {c["text_muted"]}; font-size: {FONT_SIZE["sm"]}px; }}
+    QMenuBar {{ background: {c["surface"]}; border-bottom: 1px solid {c["border"]}; }}
+    QMenuBar::item:selected {{ background: {c["primary_soft"]}; }}
+    QMenu {{ background: {c["surface"]}; border: 1px solid {c["border_strong"]}; padding: 4px; }}
+    QMenu::item {{ padding: 6px 20px; border-radius: 4px; }}
+    QMenu::item:selected {{ background: {c["primary_soft"]}; }}
 
     /* ---------------- misc ---------------- */
     QScrollArea {{ border: none; background: {c["bg"]}; }}

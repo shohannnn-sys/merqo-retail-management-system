@@ -71,7 +71,7 @@ class PurchaseService:
         day = validate_date(data.purchase_date or date.today(), "পারচেজের তারিখ")
         now = datetime.now()
 
-        prepared = []
+        prepared: list[dict[str, Any]] = []
         for line in data.lines:
             require_id(line.product_id, "প্রোডাক্ট")
             row = self.db.query_one(

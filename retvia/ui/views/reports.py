@@ -96,9 +96,9 @@ class ReportsView(QWidget):
         self.description.setWordWrap(True)
         right_layout.addWidget(self.description)
         self.table = DataTable([])
-        card = Card()
-        card.add(self.table)
-        right_layout.addWidget(card, 1)
+        self._table_card = Card()
+        self._table_card.add(self.table)
+        right_layout.addWidget(self._table_card, 1)
         self.totals_label = QLabel("")
         self.totals_label.setObjectName("Muted")
         self.totals_label.setWordWrap(True)
@@ -189,14 +189,13 @@ class ReportsView(QWidget):
         self._result = result
         widths = {"money": 130, "qty": 110, "date": 105, "int": 90, "percent": 100}
         columns = [TableColumn(c.key, c.label, c.kind, width=widths.get(c.kind, 180)) for c in result.columns]
-        self.table.deleteLater()
+        previous = self.table
         self.table = DataTable(columns)
         self.table.set_rows(result.rows)
-        card = self.table.parentWidget()
-        while card and not isinstance(card, Card):
-            card = card.parentWidget()
-        if card:
-            card.add(self.table)
+        if self._table_card is not None:
+            self._table_card.body.replaceWidget(previous, self.table)
+        previous.setParent(None)
+        previous.deleteLater()
         parts = []
         for key, value in result.totals.items():
             column = next((c for c in result.columns if c.key == key), None)

@@ -98,7 +98,7 @@ class SalesReturnService:
         if refund_amount < 0:
             raise ValidationError("রিফান্ড ঋণাত্মক হতে পারে না")
 
-        prepared = []
+        prepared: list[dict[str, Any]] = []
         for line in lines:
             require_id(line.sale_item_id, "ইনভয়েস আইটেম")
             validate_choice(line.condition, RETURN_CONDITIONS, "রিটার্ন কন্ডিশন")
@@ -201,7 +201,7 @@ class SalesReturnService:
                 ),
             )
             for p in prepared:
-                item = p["item"]
+                source_item: dict[str, Any] = p["item"]
                 self.db.insert(
                     """INSERT INTO sales_return_items
                        (return_id, sale_item_id, product_id, quantity, unit_revenue, amount,
@@ -209,12 +209,12 @@ class SalesReturnService:
                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
                     (
                         return_id,
-                        int(item["id"]),
-                        int(item["product_id"]),
+                        int(source_item["id"]),
+                        int(source_item["product_id"]),
                         p["quantity"],
                         p["unit_revenue"],
                         p["amount"],
-                        int(item["unit_cost"]),
+                        int(source_item["unit_cost"]),
                         p["cost_amount"],
                         p["condition"],
                         p["reason"],
@@ -222,15 +222,15 @@ class SalesReturnService:
                 )
                 self.db.execute(
                     "UPDATE sale_items SET returned_qty = returned_qty + ? WHERE id=?",
-                    (p["quantity"], int(item["id"])),
+                    (p["quantity"], int(source_item["id"])),
                 )
                 if p["condition"] == "restock":
                     self.inventory.apply_movement(
-                        product_id=int(item["product_id"]),
+                        product_id=int(source_item["product_id"]),
                         qty_delta=p["quantity"],
                         movement_type="sales_return_restock",
                         movement_date=day,
-                        unit_cost=int(item["unit_cost"]),
+                        unit_cost=int(source_item["unit_cost"]),
                         received_value=p["cost_amount"],
                         reference_type="sales_return",
                         reference_id=return_id,
@@ -257,6 +257,7 @@ class SalesReturnService:
                     WHERE sale_id=? AND returned_qty < quantity""",
                 (sale_id,),
             )
+            assert fully is not None  # an aggregate query always yields one row
             new_status = "returned" if int(fully["remaining"]) == 0 else "partially_returned"
             self.db.execute("UPDATE sales SET status=? WHERE id=?", (new_status, sale_id))
             self.db.execute(
@@ -402,7 +403,7 @@ class PurchaseReturnService:
         if refund_amount < 0:
             raise ValidationError("রিফান্ড ঋণাত্মক হতে পারে না")
 
-        prepared = []
+        prepared: list[dict[str, Any]] = []
         for line in lines:
             item = self.db.query_one(
                 "SELECT * FROM purchase_items WHERE id=? AND purchase_id=?",
@@ -482,31 +483,31 @@ class PurchaseReturnService:
                 ),
             )
             for p in prepared:
-                item = p["item"]
+                source_item: dict[str, Any] = p["item"]
                 self.db.insert(
                     """INSERT INTO purchase_return_items
                        (return_id, purchase_item_id, product_id, quantity, unit_cost, amount, reason)
                        VALUES (?,?,?,?,?,?,?)""",
                     (
                         return_id,
-                        int(item["id"]),
-                        int(item["product_id"]),
+                        int(source_item["id"]),
+                        int(source_item["product_id"]),
                         p["quantity"],
-                        int(item["effective_cost"]),
+                        int(source_item["effective_cost"]),
                         p["amount"],
                         p["reason"],
                     ),
                 )
                 self.db.execute(
                     "UPDATE purchase_items SET returned_qty = returned_qty + ? WHERE id=?",
-                    (p["quantity"], int(item["id"])),
+                    (p["quantity"], int(source_item["id"])),
                 )
                 self.inventory.apply_movement(
-                    product_id=int(item["product_id"]),
+                    product_id=int(source_item["product_id"]),
                     qty_delta=-p["quantity"],
                     movement_type="purchase_return",
                     movement_date=day,
-                    unit_cost=int(item["effective_cost"]),
+                    unit_cost=int(source_item["effective_cost"]),
                     issued_value=p["amount"],
                     reference_type="purchase_return",
                     reference_id=return_id,
@@ -531,6 +532,7 @@ class PurchaseReturnService:
                 "SELECT COUNT(*) AS remaining FROM purchase_items WHERE purchase_id=? AND returned_qty < quantity",
                 (purchase_id,),
             )
+            assert fully is not None  # an aggregate query always yields one row
             new_status = "returned" if int(fully["remaining"]) == 0 else "partially_returned"
             self.db.execute("UPDATE purchases SET status=? WHERE id=?", (new_status, purchase_id))
             self.db.execute(

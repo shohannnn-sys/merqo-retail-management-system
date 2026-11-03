@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint, typecheck, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check retvia tests tools
+
+      - name: Ruff format check
+        run: ruff format --check retvia tests tools
+
+      - name: Mypy
+        run: mypy retvia
+        continue-on-error: false
+
+      - name: Regenerate icon (must be reproducible)
+        run: |
+          python tools/make_icon.py
+          git diff --exit-code -- retvia/assets/icon.png retvia/assets/icon.ico
+
+      - name: Test suite with coverage
+        run: pytest --cov=retvia --cov-report=term-missing --cov-report=xml -q
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          retention-days: 14
+
+  windows-tests:
+    name: Tests on Windows + Qt offscreen
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Test suite
+        run: pytest -q
+
+      - name: Generate an ephemeral CI signing key
+        run: >
+          python tools/ci_license.py
+          --public-out retvia/assets/license_public_key.json
+          --license-out build/ci-test-license.txt
+
+      - name: Launch every screen offscreen and capture screenshots
+        env:
+          QT_QPA_PLATFORM: offscreen
+          RETVIA_DATA_DIR: ${{ runner.temp }}\retvia-ci-data
+        run: python -m retvia --smoke-test --screenshot-dir build/screenshots
+
+      - name: Verify the offline activation chain
+        env:
+          RETVIA_DATA_DIR: ${{ runner.temp }}\retvia-ci-data
+        run: |
+          python -c "import os,pathlib; from retvia.services.container import ServiceContainer; c=ServiceContainer(pathlib.Path(os.environ['RETVIA_DATA_DIR'])); k=pathlib.Path('build/ci-test-license.txt').read_text(encoding='utf-8').strip(); r=c.activation.activate(k); assert r['activated']; assert c.activation.verify()['activated']; print('activation OK', r['license_id']); c.close()"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: build/screenshots
+          retention-days: 14
+
+      - name: Confirm no CI key is committed
+        shell: bash
+        run: |
+          if git ls-files --error-unmatch retvia/assets/license_public_key.json >/dev/null 2>&1; then
+            echo "ERROR: a license public key file must not be committed"; exit 1
+          fi
+
+  audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pip-audit
+        run: pip install pip-audit==2.7.3
+      - name: Audit runtime dependencies
+        run: pip-audit -r requirements.txt --strict --progress-spinner off
+      - name: Audit development dependencies
+        run: pip-audit -r requirements-dev.txt --progress-spinner off
+        continue-on-error: true
+
+  secrets-scan:
+    name: Ensure no keys or owner source are committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check forbidden paths
+        shell: bash
+        run: |
+          set -e
+          forbidden=$(git ls-files | grep -Ei '(^owner-tools/|owner-vault.*\.json$|issuance\.db|license-private|signing-key|\.private\.json$|\.private\.pem$|owner-tool-source\.b64$)' || true)
+          if [ -n "$forbidden" ]; then
+            echo "ERROR: forbidden files are tracked:"; echo "$forbidden"; exit 1
+          fi
+          echo "No owner-only or key material tracked."
+      - name: Check for embedded private keys
+        shell: bash
+        run: |
+          set -e
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' -- . ':!*.md' ; then
+            echo "ERROR: private key material found"; exit 1
+          fi
+          echo "No private key blocks found."

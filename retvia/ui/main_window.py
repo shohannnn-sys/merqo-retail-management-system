@@ -28,6 +28,7 @@ from .views.dashboard import DashboardView
 from .views.documents import PurchasesView, ReturnsView, SalesView
 from .views.finance_views import CashView, ExpensesView
 from .views.inventory import InventoryView
+from .views.labels import LabelsView
 from .views.parties import PartiesView
 from .views.pos import PosView
 from .views.products import ProductsView
@@ -49,6 +50,7 @@ NAV_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
             ("products", "প্রোডাক্ট", "product.view"),
             ("inventory", "ইনভেন্টরি", "product.view"),
             ("catalog", "ক্যাটাগরি ও ইউনিট", "product.view"),
+            ("labels", "বারকোড ও লেবেল", "product.view"),
         ],
     ),
     (
@@ -249,6 +251,7 @@ class MainWindow(QMainWindow):
             "products": lambda: ProductsView(self.services),
             "inventory": lambda: InventoryView(self.services),
             "catalog": lambda: CatalogView(self.services),
+            "labels": lambda: LabelsView(self.services),
             "sales": lambda: SalesView(self.services),
             "purchases": lambda: PurchasesView(self.services),
             "returns": lambda: ReturnsView(self.services),
@@ -353,19 +356,18 @@ class MainWindow(QMainWindow):
             self.services.maybe_auto_backup()
 
     def _open_guide(self) -> None:
-        from pathlib import Path
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
 
-        import retvia
+        from ..paths import docs_dir, resource_path
 
         candidates = [
-            Path(retvia.__file__).parent / "assets" / "docs" / "USER_GUIDE_BN.html",
-            Path(retvia.__file__).parent.parent / "docs" / "USER_GUIDE_BN.md",
+            resource_path("assets", "docs", "USER_GUIDE_BN.html"),
+            docs_dir() / "USER_GUIDE_BN.html",
+            docs_dir() / "USER_GUIDE_BN.md",
         ]
         for candidate in candidates:
             if candidate.is_file():
-                from PySide6.QtCore import QUrl
-                from PySide6.QtGui import QDesktopServices
-
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(candidate)))
                 return
         show_info(self, "নির্দেশিকা ফাইলটি ইনস্টলেশন ফোল্ডারের docs অংশে পাওয়া যাবে।")

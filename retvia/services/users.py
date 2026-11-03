@@ -6,6 +6,7 @@ salt. Nothing is ever sent off the machine.
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import hmac
 import secrets
@@ -283,7 +284,7 @@ class UserService:
             (username[:40], int(succeeded), reason),
         )
 
-    def login_history(self, *, limit: int = 200) -> list[dict[str, Any]]:
+    def login_history(self, *, limit: int = 200) -> builtins.list[dict[str, Any]]:
         return [
             dict(r) for r in self.db.query("SELECT * FROM login_attempts ORDER BY id DESC LIMIT ?", (limit,))
         ]

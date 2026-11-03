@@ -585,15 +585,13 @@ class PaymentMethodService:
         return mid
 
     def set_active(self, method_id: int, active: bool) -> None:
-        if (
-            not active
-            and self.db.query_one(
+        if not active:
+            other_cash = self.db.query_one(
                 "SELECT id FROM payment_methods WHERE is_cash=1 AND is_active=1 AND id<>?", (method_id,)
             )
-            is None
-            and self.db.query_one("SELECT is_cash FROM payment_methods WHERE id=?", (method_id,))["is_cash"]
-        ):
-            raise ValidationError("অন্তত একটি ক্যাশ পেমেন্ট মেথড সক্রিয় থাকতে হবে")
+            current = self.db.query_one("SELECT is_cash FROM payment_methods WHERE id=?", (method_id,))
+            if other_cash is None and current is not None and current["is_cash"]:
+                raise ValidationError("অন্তত একটি ক্যাশ পেমেন্ট মেথড সক্রিয় থাকতে হবে")
         with self.db.transaction():
             self.db.execute(
                 "UPDATE payment_methods SET is_active=? WHERE id=?", (1 if active else 0, method_id)

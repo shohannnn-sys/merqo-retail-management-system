@@ -163,11 +163,10 @@ class ServiceContainer:
     # ---------------------------------------------------------------- printing
     def receipt_pdf(self, sale_id: int, path: str | Path) -> Path:
         """Render a sale receipt to a PDF file with the embedded Bangla font."""
-        from ..printing.documents import receipt_html, render_receipt_pdf
+        from ..printing.documents import render_receipt_pdf
 
         sale = self.sales.get(sale_id)
-        html_text = receipt_html(sale, self.profile.get(), self.settings)
-        return render_receipt_pdf(html_text, path, width_mm=float(self.settings.get("paper_width_mm", "80")))
+        return render_receipt_pdf(sale, self.profile.get(), self.settings, path)
 
     def print_receipt(self, sale_id: int, *, copy_label: str = "") -> None:
         from ..printing.documents import print_html, receipt_html
@@ -180,6 +179,7 @@ class ServiceContainer:
             width_mm=float(self.settings.get("paper_width_mm", "80")),
             margin_mm=float(self.settings.get_int("receipt_margin_mm", 3)),
             copies=self.settings.get_int("receipt_copies", 1),
+            raster=self.settings.get_bool("receipt_raster_mode", True),
         )
 
     def health(self) -> dict[str, Any]:

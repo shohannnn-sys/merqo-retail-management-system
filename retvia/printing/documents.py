@@ -18,8 +18,9 @@ from typing import Any
 
 from ..core.money import format_money
 from ..core.quantity import format_quantity
+from ..paths import resource_path
 
-FONT_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+FONT_DIR = resource_path("assets", "fonts")
 _fonts_loaded = False
 
 
@@ -327,17 +328,64 @@ def default_printer_name() -> str:
     return QPrinterInfo.defaultPrinter().printerName()
 
 
+def render_html_image(
+    html_text: str,
+    *,
+    width_mm: float,
+    height_mm: float | None = None,
+    dpi: int = 203,
+) -> Any:
+    """Rasterise HTML with Qt so Bengali conjuncts shape exactly as on screen.
+
+    Thermal printers frequently lack a Bengali font; sending a bitmap guarantees
+    the receipt looks identical to the preview.
+    """
+    from PySide6.QtCore import QRectF, QSizeF, Qt
+    from PySide6.QtGui import QImage, QPainter, QTextDocument
+
+    _ensure_app()
+    document = QTextDocument()
+    document.setHtml(html_text)
+    pixels_per_mm = dpi / 25.4
+    width_px = max(1, int(round(width_mm * pixels_per_mm)))
+    document.setTextWidth(width_px)
+    document.setPageSize(QSizeF(width_px, 10_000_000))
+    natural_height = int(document.size().height()) + 4
+    height_px = max(1, int(round(height_mm * pixels_per_mm))) if height_mm is not None else natural_height
+    image = QImage(width_px, height_px, QImage.Format_RGB32)
+    image.fill(Qt.white)
+    image.setDotsPerMeterX(int(dpi / 0.0254))
+    image.setDotsPerMeterY(int(dpi / 0.0254))
+    painter = QPainter(image)
+    document.drawContents(painter, QRectF(0, 0, width_px, height_px))
+    painter.end()
+    return image
+
+
+def render_label_image(
+    html_text: str, *, width_mm: float = 65.0, height_mm: float = 35.0, dpi: int = 203
+) -> Any:
+    """Fixed-size label bitmap used for the on-screen preview."""
+    return render_html_image(html_text, width_mm=width_mm, height_mm=height_mm, dpi=dpi)
+
+
 def print_html(
     html_text: str,
     *,
     printer_name: str = "",
     width_mm: float | None = None,
+    height_mm: float | None = None,
     margin_mm: float = 3.0,
     copies: int = 1,
+    raster: bool = False,
 ) -> bool:
-    """Send a document to a physical Windows printer."""
-    from PySide6.QtCore import QMarginsF, QSizeF
-    from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
+    """Send a document to a physical Windows printer.
+
+    ``raster=True`` renders the page to a bitmap first, which is the reliable
+    path for 58/80 mm thermal printers that have no Bengali font of their own.
+    """
+    from PySide6.QtCore import QMarginsF, QRectF, QSizeF
+    from PySide6.QtGui import QPageLayout, QPageSize, QPainter, QTextDocument
     from PySide6.QtPrintSupport import QPrinter, QPrinterInfo
 
     _ensure_app()
@@ -352,12 +400,23 @@ def print_html(
     printer.setCopyCount(max(1, copies))
     if width_mm:
         layout = QPageLayout(
-            QPageSize(QSizeF(width_mm, 297.0), QPageSize.Millimeter),
+            QPageSize(QSizeF(width_mm, height_mm or 297.0), QPageSize.Millimeter),
             QPageLayout.Portrait,
             QMarginsF(margin_mm, margin_mm, margin_mm, margin_mm),
             QPageLayout.Millimeter,
         )
         printer.setPageLayout(layout)
+
+    if raster and width_mm:
+        usable = max(10.0, width_mm - 2 * margin_mm)
+        image = render_html_image(html_text, width_mm=usable, height_mm=height_mm, dpi=printer.resolution())
+        painter = QPainter(printer)
+        page = painter.viewport()
+        target = QRectF(0, 0, page.width(), min(page.height(), image.height()))
+        painter.drawImage(target, image, QRectF(0, 0, image.width(), image.height()))
+        painter.end()
+        return True
+
     document = QTextDocument()
     document.setHtml(html_text)
     document.print_(printer)
@@ -401,32 +460,61 @@ def qr_image(text: str, *, box_size: int = 6) -> Any:
 
 def label_html(
     product: dict[str, Any],
-    business_name: str,
+    business: Any,
     *,
-    width_mm: float = 50.0,
-    height_mm: float = 25.0,
+    width_mm: float = 65.0,
+    height_mm: float = 35.0,
+    show_name: bool = True,
     show_price: bool = True,
+    show_business: bool = False,
+    show_code_text: bool = True,
+    code_kind: str = "barcode",
+    fragment: bool = False,
 ) -> str:
-    escape = html.escape
-    price = format_money(int(product.get("selling_price", 0)))
-    image = barcode_image(str(product.get("barcode") or product.get("sku", "")))
+    """Build one product label. ``fragment=True`` omits the html/body wrapper."""
     import base64
 
     from PySide6.QtCore import QBuffer, QByteArray
 
-    array = QByteArray()
-    buffer = QBuffer(array)
-    buffer.open(QBuffer.WriteOnly)
-    image.save(buffer, "PNG")
-    buffer.close()
-    encoded = base64.b64encode(bytes(array)).decode("ascii")
+    escape = html.escape
+    code = str(product.get("barcode") or product.get("sku", "")).strip()
+    encoded = ""
+    if code:
+        image = qr_image(code) if code_kind == "qr" else barcode_image(code)
+        array = QByteArray()
+        buffer = QBuffer(array)
+        buffer.open(QBuffer.WriteOnly)
+        image.save(buffer, "PNG")
+        buffer.close()
+        encoded = base64.b64encode(bytes(array)).decode("ascii")
+
+    business_name = getattr(business, "name", "") or ""
+    price = format_money(int(product.get("selling_price", 0)))
+    image_width = int(max(20.0, width_mm - 6) * 3.2)
+    if code_kind == "qr":
+        image_width = int(max(14.0, height_mm - 10) * 3.2)
+
+    parts = ['<div class="label">']
+    if show_business and business_name:
+        parts.append(f'<div class="biz">{escape(business_name)}</div>')
+    if show_name:
+        parts.append(f'<div class="name">{escape(str(product.get("name", "")))}</div>')
+    if encoded:
+        parts.append(f'<img src="data:image/png;base64,{encoded}" width="{image_width}">')
+    if show_code_text and code:
+        parts.append(f'<div class="code">{escape(code)}</div>')
+    if show_price:
+        parts.append(f'<div class="price">৳ {price}</div>')
+    parts.append("</div>")
+    body = "".join(parts)
+    if fragment:
+        return body
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      body {{ font-family:'Noto Sans Bengali',sans-serif; font-size:7pt; margin:0; text-align:center; }}
+      body {{ font-family:'Noto Sans Bengali',sans-serif; font-size:7pt; margin:0;
+             text-align:center; }}
+      .label {{ width:{width_mm}mm; height:{height_mm}mm; overflow:hidden; }}
+      .biz {{ font-size:6pt; }}
       .name {{ font-weight:600; font-size:8pt; }}
-      .price {{ font-size:10pt; font-weight:700; }}
-    </style></head><body>
-      <div class="name">{escape(business_name)}</div>
-      <div class="name">{escape(str(product.get("name", "")))}</div>
-      <img src="data:image/png;base64,{encoded}" width="{int(width_mm * 3)}">
-      {f'<div class="price">৳ {price}</div>' if show_price else ""}
-    </body></html>"""
+      .code {{ font-size:6pt; letter-spacing:0.5pt; }}
+      .price {{ font-size:11pt; font-weight:700; }}
+    </style></head><body>{body}</body></html>"""
