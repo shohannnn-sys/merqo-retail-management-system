@@ -1,0 +1,7 @@
+# Retvia runtime dependencies — pinned for reproducible commercial builds.
+PySide6-Essentials==6.8.1.1
+cryptography==44.0.0
+openpyxl==3.1.5
+qrcode==8.0
+python-barcode==0.15.1
+Pillow==11.1.0

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retvia"
+version = "0.1.0"
+description = "Retvia — offline POS, inventory and business management for Bangladesh, by MERQO"
+requires-python = ">=3.11"
+authors = [{ name = "Shohan Khan", email = "merqoonline@gmail.com" }]
+license = { text = "Proprietary" }
+
+[tool.setuptools.packages.find]
+include = ["retvia*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: performance tests with large synthetic datasets",
+    "gui: requires a Qt platform plugin (runs on Windows CI)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["build", "dist", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C4", "SIM"]
+ignore = ["E501", "SIM108", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = false
+ignore_missing_imports = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+exclude = "(build|dist|\\.venv)"
