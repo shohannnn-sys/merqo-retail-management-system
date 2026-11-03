@@ -1,0 +1,30 @@
+MERQO RETVIA — PROPRIETARY SOFTWARE LICENSE
+
+Copyright (c) 2026 MERQO. Founder: Shohan Khan. All rights reserved.
+Contact: merqoonline@gmail.com
+
+This software and its source code are the confidential and proprietary
+property of MERQO ("Licensor"). The source code is made available in this
+repository for development, auditing and build purposes only.
+
+NO RIGHTS ARE GRANTED to any third party to use, copy, modify, merge,
+publish, distribute, sublicense, sell, or create derivative works of this
+software or its source code, in whole or in part, without the prior
+written permission of the Licensor.
+
+End users receive a separate, non-exclusive, non-transferable, lifetime
+license to use the compiled application for a single business entity,
+subject to the MERQO End User License Agreement delivered with the
+installer. That end-user license does not grant any rights to the source
+code.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+Third-party open-source components bundled with this software remain
+under their respective licenses; see THIRD_PARTY_NOTICES.md.
