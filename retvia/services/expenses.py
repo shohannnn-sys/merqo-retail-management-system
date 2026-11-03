@@ -17,8 +17,12 @@ from .settings import SettingsService
 
 class ExpenseService:
     def __init__(
-        self, db: Database, *, settings: SettingsService | None = None,
-        audit: AuditService | None = None, numbering: NumberingService | None = None,
+        self,
+        db: Database,
+        *,
+        settings: SettingsService | None = None,
+        audit: AuditService | None = None,
+        numbering: NumberingService | None = None,
         cash: CashService | None = None,
     ) -> None:
         self.db = db
@@ -55,9 +59,15 @@ class ExpenseService:
 
     # ---------------------------------------------------------------- vouchers
     def create(
-        self, *, category_id: int, amount: int, method_id: int,
-        expense_date: str | date | None = None, description: str = "",
-        reference: str = "", notes: str = "",
+        self,
+        *,
+        category_id: int,
+        amount: int,
+        method_id: int,
+        expense_date: str | date | None = None,
+        description: str = "",
+        reference: str = "",
+        notes: str = "",
     ) -> dict[str, Any]:
         require_id(category_id, "এক্সপেন্স ক্যাটাগরি")
         require_id(method_id, "পেমেন্ট মেথড")
@@ -66,9 +76,7 @@ class ExpenseService:
         category = self.db.query_one("SELECT * FROM expense_categories WHERE id=?", (category_id,))
         if category is None:
             raise NotFoundError("ক্যাটাগরি খুঁজে পাওয়া যায়নি")
-        method = self.db.query_one(
-            "SELECT * FROM payment_methods WHERE id=? AND is_active=1", (method_id,)
-        )
+        method = self.db.query_one("SELECT * FROM payment_methods WHERE id=? AND is_active=1", (method_id,))
         if method is None:
             raise NotFoundError("পেমেন্ট মেথড খুঁজে পাওয়া যায়নি")
         day = validate_date(expense_date or date.today(), "এক্সপেন্সের তারিখ")
@@ -82,17 +90,26 @@ class ExpenseService:
                     description, reference, notes, cash_session_id)
                    VALUES (?,?,?,?,?,?,?,?,?)""",
                 (
-                    voucher_no, category_id, amount, day, method_id,
+                    voucher_no,
+                    category_id,
+                    amount,
+                    day,
+                    method_id,
                     optional_text(description, max_length=500),
                     optional_text(reference, max_length=120),
-                    optional_text(notes, max_length=500), session_id,
+                    optional_text(notes, max_length=500),
+                    session_id,
                 ),
             )
             if method["is_cash"] and session_id is not None:
                 self.cash.record_movement(
-                    session_id=session_id, movement_type="expense", amount=-amount,
-                    payment_method_id=method_id, reference_type="expense",
-                    reference_id=expense_id, notes=voucher_no,
+                    session_id=session_id,
+                    movement_type="expense",
+                    amount=-amount,
+                    payment_method_id=method_id,
+                    reference_type="expense",
+                    reference_id=expense_id,
+                    notes=voucher_no,
                 )
             self.db.execute(
                 """INSERT INTO transactions
@@ -100,12 +117,21 @@ class ExpenseService:
                     paid_amount, due_amount, payment_summary, reference_type, reference_id, notes)
                    VALUES ('expense', ?, ?, 'expense', ?, ?, ?, ?, 0, ?, 'expense', ?, ?)""",
                 (
-                    voucher_no, day, category_id, category["name"], amount, amount,
-                    method["name"], expense_id, optional_text(description, max_length=300),
+                    voucher_no,
+                    day,
+                    category_id,
+                    category["name"],
+                    amount,
+                    amount,
+                    method["name"],
+                    expense_id,
+                    optional_text(description, max_length=300),
                 ),
             )
             self.audit.log(
-                "expense", expense_id, "create",
+                "expense",
+                expense_id,
+                "create",
                 f"এক্সপেন্স {voucher_no} — {category['name']} {amount}",
             )
         return {"id": expense_id, "voucher_no": voucher_no, "amount": amount}
@@ -123,8 +149,11 @@ class ExpenseService:
             if method is not None and method["is_cash"]:
                 session_id = self.cash.require_open_session()
                 self.cash.record_movement(
-                    session_id=session_id, movement_type="cash_in", amount=int(expense["amount"]),
-                    reference_type="expense_cancel", reference_id=expense_id,
+                    session_id=session_id,
+                    movement_type="cash_in",
+                    amount=int(expense["amount"]),
+                    reference_type="expense_cancel",
+                    reference_id=expense_id,
                     notes=f"এক্সপেন্স বাতিল: {expense['voucher_no']} — {reason}",
                 )
             self.db.execute("DELETE FROM expenses WHERE id=?", (expense_id,))
@@ -133,15 +162,22 @@ class ExpenseService:
                 (expense_id,),
             )
             self.audit.log(
-                "expense", expense_id, "cancel",
+                "expense",
+                expense_id,
+                "cancel",
                 f"এক্সপেন্স বাতিল {expense['voucher_no']} — {reason}",
                 before={"amount": int(expense["amount"])},
             )
 
     def search(
-        self, *, start: str | None = None, end: str | None = None,
-        category_id: int | None = None, method_id: int | None = None,
-        limit: int = 100, offset: int = 0,
+        self,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        category_id: int | None = None,
+        method_id: int | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         where = ["1=1"]
         params: list[Any] = []
@@ -159,9 +195,9 @@ class ExpenseService:
             params.append(method_id)
         clause = " AND ".join(where)
         total = int(self.db.scalar(f"SELECT COUNT(*) FROM expenses e WHERE {clause}", params))
-        total_amount = int(self.db.scalar(
-            f"SELECT COALESCE(SUM(e.amount),0) FROM expenses e WHERE {clause}", params
-        ))
+        total_amount = int(
+            self.db.scalar(f"SELECT COALESCE(SUM(e.amount),0) FROM expenses e WHERE {clause}", params)
+        )
         rows = self.db.query(
             f"""SELECT e.*, ec.name AS category_name, pm.name AS method_name
                   FROM expenses e
@@ -174,7 +210,8 @@ class ExpenseService:
 
     def by_category(self, start: str, end: str) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT ec.id, ec.name, COALESCE(SUM(e.amount),0) AS total, COUNT(e.id) AS count
                      FROM expense_categories ec
                      LEFT JOIN expenses e ON e.category_id=ec.id AND e.expense_date BETWEEN ? AND ?
@@ -184,7 +221,9 @@ class ExpenseService:
         ]
 
     def total(self, start: str, end: str) -> int:
-        return int(self.db.scalar(
-            "SELECT COALESCE(SUM(amount),0) FROM expenses WHERE expense_date BETWEEN ? AND ?",
-            (start, end),
-        ))
+        return int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(amount),0) FROM expenses WHERE expense_date BETWEEN ? AND ?",
+                (start, end),
+            )
+        )

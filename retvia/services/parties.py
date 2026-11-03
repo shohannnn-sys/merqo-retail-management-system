@@ -57,13 +57,21 @@ class CustomerService:
                    (name, name_normalized, phone, address, email, opening_due, current_due, notes)
                    VALUES (?,?,?,?,?,?,?,?)""",
                 (
-                    name, normalize_search(name), phone,
-                    optional_text(data.address, max_length=500), validate_email(data.email),
-                    data.opening_due, data.opening_due, optional_text(data.notes, max_length=1000),
+                    name,
+                    normalize_search(name),
+                    phone,
+                    optional_text(data.address, max_length=500),
+                    validate_email(data.email),
+                    data.opening_due,
+                    data.opening_due,
+                    optional_text(data.notes, max_length=1000),
                 ),
             )
             self.audit.log(
-                "customer", cid, "create", f"কাস্টমার তৈরি: {name}",
+                "customer",
+                cid,
+                "create",
+                f"কাস্টমার তৈরি: {name}",
                 after={"opening_due": data.opening_due},
             )
         return cid
@@ -82,9 +90,13 @@ class CustomerService:
                 """UPDATE customers SET name=?, name_normalized=?, phone=?, address=?, email=?,
                           notes=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?""",
                 (
-                    name, normalize_search(name), phone,
-                    optional_text(data.address, max_length=500), validate_email(data.email),
-                    optional_text(data.notes, max_length=1000), customer_id,
+                    name,
+                    normalize_search(name),
+                    phone,
+                    optional_text(data.address, max_length=500),
+                    validate_email(data.email),
+                    optional_text(data.notes, max_length=1000),
+                    customer_id,
                 ),
             )
             self.audit.log("customer", customer_id, "update", f"কাস্টমার হালনাগাদ: {name}")
@@ -102,9 +114,7 @@ class CustomerService:
             self.db.scalar("SELECT COUNT(*) FROM customer_payments WHERE customer_id=?", (customer_id,))
         )
         if sales or payments:
-            raise BusinessRuleError(
-                "এই কাস্টমারের লেনদেন হিস্ট্রি রয়েছে — মুছে না ফেলে আর্কাইভ করুন"
-            )
+            raise BusinessRuleError("এই কাস্টমারের লেনদেন হিস্ট্রি রয়েছে — মুছে না ফেলে আর্কাইভ করুন")
         with self.db.transaction():
             self.db.execute("DELETE FROM customers WHERE id=?", (customer_id,))
             self.audit.log("customer", customer_id, "delete", "কাস্টমার মুছে ফেলা হয়েছে")
@@ -116,8 +126,13 @@ class CustomerService:
         return dict(row)
 
     def search(
-        self, *, query: str = "", status: str = "active", due_only: bool = False,
-        limit: int = 50, offset: int = 0,
+        self,
+        *,
+        query: str = "",
+        status: str = "active",
+        due_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
     ) -> dict[str, Any]:
         where = ["1=1"]
         params: list[Any] = []
@@ -172,18 +187,20 @@ class CustomerService:
             "opening_due": int(customer["opening_due"]),
         }
 
-    def ledger(
-        self, customer_id: int, *, start: str | None = None, end: str | None = None
-    ) -> dict[str, Any]:
+    def ledger(self, customer_id: int, *, start: str | None = None, end: str | None = None) -> dict[str, Any]:
         """Opening balance + debits/credits with a running balance."""
         customer = self.get(customer_id)
         entries: list[dict[str, Any]] = []
         opening = int(customer["opening_due"])
         entries.append(
             {
-                "date": customer["created_at"][:10], "particulars": "ওপেনিং ব্যালেন্স",
-                "reference": "", "debit": max(opening, 0), "credit": max(-opening, 0),
-                "kind": "opening", "reference_id": None,
+                "date": customer["created_at"][:10],
+                "particulars": "ওপেনিং ব্যালেন্স",
+                "reference": "",
+                "debit": max(opening, 0),
+                "credit": max(-opening, 0),
+                "kind": "opening",
+                "reference_id": None,
             }
         )
         sales = self.db.query(
@@ -196,9 +213,13 @@ class CustomerService:
                 continue
             entries.append(
                 {
-                    "date": s["sale_date"], "particulars": f"সেলস — {s['invoice_no']}",
-                    "reference": s["invoice_no"], "debit": int(s["grand_total"]),
-                    "credit": int(s["paid_amount"]), "kind": "sale", "reference_id": int(s["id"]),
+                    "date": s["sale_date"],
+                    "particulars": f"সেলস — {s['invoice_no']}",
+                    "reference": s["invoice_no"],
+                    "debit": int(s["grand_total"]),
+                    "credit": int(s["paid_amount"]),
+                    "kind": "sale",
+                    "reference_id": int(s["id"]),
                 }
             )
         for p in self.db.query(
@@ -211,8 +232,11 @@ class CustomerService:
                 {
                     "date": p["payment_date"],
                     "particulars": f"পেমেন্ট গ্রহণ — {p['receipt_no']} ({p['method']})",
-                    "reference": p["receipt_no"], "debit": 0, "credit": int(p["amount"]),
-                    "kind": "payment", "reference_id": int(p["id"]),
+                    "reference": p["receipt_no"],
+                    "debit": 0,
+                    "credit": int(p["amount"]),
+                    "kind": "payment",
+                    "reference_id": int(p["id"]),
                 }
             )
         for r in self.db.query(
@@ -224,9 +248,13 @@ class CustomerService:
             if credit:
                 entries.append(
                     {
-                        "date": r["return_date"], "particulars": f"সেলস রিটার্ন — {r['return_no']}",
-                        "reference": r["return_no"], "debit": 0, "credit": credit,
-                        "kind": "return", "reference_id": int(r["id"]),
+                        "date": r["return_date"],
+                        "particulars": f"সেলস রিটার্ন — {r['return_no']}",
+                        "reference": r["return_no"],
+                        "debit": 0,
+                        "credit": credit,
+                        "kind": "return",
+                        "reference_id": int(r["id"]),
                     }
                 )
         entries.sort(key=lambda e: (e["date"], 0 if e["kind"] == "opening" else 1))
@@ -270,8 +298,12 @@ class CustomerService:
             expected = r["opening_due"] + r["sale_due"] - r["collected"] - r["returned"]
             if expected != r["current_due"]:
                 problems.append(
-                    {"customer_id": r["id"], "name": r["name"],
-                     "current_due": r["current_due"], "ledger_due": expected}
+                    {
+                        "customer_id": r["id"],
+                        "name": r["name"],
+                        "current_due": r["current_due"],
+                        "ledger_due": expected,
+                    }
                 )
         return problems
 
@@ -291,10 +323,15 @@ class SupplierService:
                     opening_payable, current_payable, notes)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    name, normalize_search(name), optional_text(data.business_name, max_length=200),
-                    optional_text(data.contact_person, max_length=120), phone,
-                    optional_text(data.address, max_length=500), validate_email(data.email),
-                    data.opening_payable, data.opening_payable,
+                    name,
+                    normalize_search(name),
+                    optional_text(data.business_name, max_length=200),
+                    optional_text(data.contact_person, max_length=120),
+                    phone,
+                    optional_text(data.address, max_length=500),
+                    validate_email(data.email),
+                    data.opening_payable,
+                    data.opening_payable,
                     optional_text(data.notes, max_length=1000),
                 ),
             )
@@ -311,10 +348,15 @@ class SupplierService:
                           phone=?, address=?, email=?, notes=?,
                           updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?""",
                 (
-                    name, normalize_search(name), optional_text(data.business_name, max_length=200),
-                    optional_text(data.contact_person, max_length=120), validate_phone(data.phone),
-                    optional_text(data.address, max_length=500), validate_email(data.email),
-                    optional_text(data.notes, max_length=1000), supplier_id,
+                    name,
+                    normalize_search(name),
+                    optional_text(data.business_name, max_length=200),
+                    optional_text(data.contact_person, max_length=120),
+                    validate_phone(data.phone),
+                    optional_text(data.address, max_length=500),
+                    validate_email(data.email),
+                    optional_text(data.notes, max_length=1000),
+                    supplier_id,
                 ),
             )
             self.audit.log("supplier", supplier_id, "update", f"সাপ্লায়ার হালনাগাদ: {name}")
@@ -340,8 +382,13 @@ class SupplierService:
         return dict(row)
 
     def search(
-        self, *, query: str = "", status: str = "active", payable_only: bool = False,
-        limit: int = 50, offset: int = 0,
+        self,
+        *,
+        query: str = "",
+        status: str = "active",
+        payable_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
     ) -> dict[str, Any]:
         where = ["1=1"]
         params: list[Any] = []
@@ -399,16 +446,18 @@ class SupplierService:
             "opening_payable": int(supplier["opening_payable"]),
         }
 
-    def ledger(
-        self, supplier_id: int, *, start: str | None = None, end: str | None = None
-    ) -> dict[str, Any]:
+    def ledger(self, supplier_id: int, *, start: str | None = None, end: str | None = None) -> dict[str, Any]:
         supplier = self.get(supplier_id)
         opening = int(supplier["opening_payable"])
         entries: list[dict[str, Any]] = [
             {
-                "date": supplier["created_at"][:10], "particulars": "ওপেনিং ব্যালেন্স",
-                "reference": "", "debit": max(-opening, 0), "credit": max(opening, 0),
-                "kind": "opening", "reference_id": None,
+                "date": supplier["created_at"][:10],
+                "particulars": "ওপেনিং ব্যালেন্স",
+                "reference": "",
+                "debit": max(-opening, 0),
+                "credit": max(opening, 0),
+                "kind": "opening",
+                "reference_id": None,
             }
         ]
         for p in self.db.query(
@@ -420,9 +469,12 @@ class SupplierService:
                 continue
             entries.append(
                 {
-                    "date": p["purchase_date"], "particulars": f"পারচেজ — {p['invoice_no']}",
-                    "reference": p["invoice_no"], "debit": int(p["paid_amount"]),
-                    "credit": int(p["grand_total"]), "kind": "purchase",
+                    "date": p["purchase_date"],
+                    "particulars": f"পারচেজ — {p['invoice_no']}",
+                    "reference": p["invoice_no"],
+                    "debit": int(p["paid_amount"]),
+                    "credit": int(p["grand_total"]),
+                    "kind": "purchase",
                     "reference_id": int(p["id"]),
                 }
             )
@@ -436,8 +488,11 @@ class SupplierService:
                 {
                     "date": p["payment_date"],
                     "particulars": f"পেমেন্ট প্রদান — {p['receipt_no']} ({p['method']})",
-                    "reference": p["receipt_no"], "debit": int(p["amount"]), "credit": 0,
-                    "kind": "payment", "reference_id": int(p["id"]),
+                    "reference": p["receipt_no"],
+                    "debit": int(p["amount"]),
+                    "credit": 0,
+                    "kind": "payment",
+                    "reference_id": int(p["id"]),
                 }
             )
         for r in self.db.query(
@@ -449,9 +504,13 @@ class SupplierService:
             if debit:
                 entries.append(
                     {
-                        "date": r["return_date"], "particulars": f"পারচেজ রিটার্ন — {r['return_no']}",
-                        "reference": r["return_no"], "debit": debit, "credit": 0,
-                        "kind": "return", "reference_id": int(r["id"]),
+                        "date": r["return_date"],
+                        "particulars": f"পারচেজ রিটার্ন — {r['return_no']}",
+                        "reference": r["return_no"],
+                        "debit": debit,
+                        "credit": 0,
+                        "kind": "return",
+                        "reference_id": int(r["id"]),
                     }
                 )
         entries.sort(key=lambda e: (e["date"], 0 if e["kind"] == "opening" else 1))
@@ -464,7 +523,9 @@ class SupplierService:
             running += entry["credit"] - entry["debit"]
             entry["balance"] = running
         return {
-            "supplier": supplier, "entries": entries, "opening_balance": opening,
+            "supplier": supplier,
+            "entries": entries,
+            "opening_balance": opening,
             "closing_balance": running,
             "total_debit": sum(e["debit"] for e in entries),
             "total_credit": sum(e["credit"] for e in entries),
@@ -486,8 +547,12 @@ class SupplierService:
             expected = r["opening_payable"] + r["purchase_due"] - r["paid"] - r["returned"]
             if expected != r["current_payable"]:
                 problems.append(
-                    {"supplier_id": r["id"], "name": r["name"],
-                     "current_payable": r["current_payable"], "ledger_payable": expected}
+                    {
+                        "supplier_id": r["id"],
+                        "name": r["name"],
+                        "current_payable": r["current_payable"],
+                        "ledger_payable": expected,
+                    }
                 )
         return problems
 
@@ -520,11 +585,14 @@ class PaymentMethodService:
         return mid
 
     def set_active(self, method_id: int, active: bool) -> None:
-        if not active and self.db.query_one(
-            "SELECT id FROM payment_methods WHERE is_cash=1 AND is_active=1 AND id<>?", (method_id,)
-        ) is None and self.db.query_one(
-            "SELECT is_cash FROM payment_methods WHERE id=?", (method_id,)
-        )["is_cash"]:
+        if (
+            not active
+            and self.db.query_one(
+                "SELECT id FROM payment_methods WHERE is_cash=1 AND is_active=1 AND id<>?", (method_id,)
+            )
+            is None
+            and self.db.query_one("SELECT is_cash FROM payment_methods WHERE id=?", (method_id,))["is_cash"]
+        ):
             raise ValidationError("অন্তত একটি ক্যাশ পেমেন্ট মেথড সক্রিয় থাকতে হবে")
         with self.db.transaction():
             self.db.execute(

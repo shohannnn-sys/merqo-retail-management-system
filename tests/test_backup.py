@@ -19,13 +19,24 @@ def backup(db, tmp_path, settings, audit):
 
 @pytest.fixture()
 def with_data(db, products, customers, sales, unit_id, cash_method_id, open_shift):
-    pid = products.create(ProductInput(
-        name="চিনি", sku="SUG", unit_id=unit_id, purchase_price=8000,
-        selling_price=10000, opening_qty=50_000,
-    ))
+    pid = products.create(
+        ProductInput(
+            name="চিনি",
+            sku="SUG",
+            unit_id=unit_id,
+            purchase_price=8000,
+            selling_price=10000,
+            opening_qty=50_000,
+        )
+    )
     cid = customers.create(CustomerInput(name="ব্যাকআপ কাস্টমার", phone="01711111111"))
-    sales.create(SaleInput(lines=[SaleLineInput(pid, 3_000)], customer_id=cid,
-                           payments=[PaymentInput(cash_method_id, 10_000)]))
+    sales.create(
+        SaleInput(
+            lines=[SaleLineInput(pid, 3_000)],
+            customer_id=cid,
+            payments=[PaymentInput(cash_method_id, 10_000)],
+        )
+    )
     return {"product": pid, "customer": cid}
 
 

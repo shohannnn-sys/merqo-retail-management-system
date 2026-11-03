@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from ..core.errors import BusinessRuleError, DuplicateError, NotFoundError, ValidationError
+from ..core.errors import BusinessRuleError, DuplicateError, NotFoundError
 from ..core.textnorm import normalize_search
 from ..core.validation import (
     optional_text,
@@ -64,13 +64,9 @@ class CategoryService:
             self.audit.log("category", category_id, "update", f"ক্যাটাগরি হালনাগাদ: {name}")
 
     def delete(self, category_id: int) -> None:
-        count = int(
-            self.db.scalar("SELECT COUNT(*) FROM products WHERE category_id=?", (category_id,))
-        )
+        count = int(self.db.scalar("SELECT COUNT(*) FROM products WHERE category_id=?", (category_id,)))
         if count:
-            raise BusinessRuleError(
-                f"এই ক্যাটাগরিতে {count}টি প্রোডাক্ট রয়েছে — আগে সেগুলো সরান"
-            )
+            raise BusinessRuleError(f"এই ক্যাটাগরিতে {count}টি প্রোডাক্ট রয়েছে — আগে সেগুলো সরান")
         with self.db.transaction():
             self.db.execute("DELETE FROM categories WHERE id=?", (category_id,))
             self.audit.log("category", category_id, "delete", "ক্যাটাগরি মুছে ফেলা হয়েছে")
@@ -120,15 +116,11 @@ class UnitService:
         name = require_text(name, "ইউনিটের নাম", max_length=60)
         precision = require_precision(precision)
         normalized = normalize_search(name)
-        if self.db.query_one(
-            "SELECT id FROM units WHERE name_normalized=? AND id<>?", (normalized, unit_id)
-        ):
+        if self.db.query_one("SELECT id FROM units WHERE name_normalized=? AND id<>?", (normalized, unit_id)):
             raise DuplicateError(f"'{name}' নামে ইউনিট আগে থেকেই রয়েছে")
         used = int(self.db.scalar("SELECT COUNT(*) FROM products WHERE unit_id=?", (unit_id,)))
         if used and precision != self.get(unit_id)["decimal_precision"]:
-            raise BusinessRuleError(
-                "এই ইউনিটে প্রোডাক্ট রয়েছে — দশমিক নির্ভুলতা পরিবর্তন করা যাবে না"
-            )
+            raise BusinessRuleError("এই ইউনিটে প্রোডাক্ট রয়েছে — দশমিক নির্ভুলতা পরিবর্তন করা যাবে না")
         with self.db.transaction():
             self.db.execute(
                 """UPDATE units SET name=?, name_normalized=?, symbol=?, decimal_precision=?,
@@ -225,9 +217,19 @@ class ProductService:
                     description, track_stock)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    name, normalize_search(name), sku, data.category_id, data.unit_id,
-                    optional_text(data.brand, max_length=120), purchase, selling, opening,
-                    minimum, discount, tax, optional_text(data.description, max_length=1000),
+                    name,
+                    normalize_search(name),
+                    sku,
+                    data.category_id,
+                    data.unit_id,
+                    optional_text(data.brand, max_length=120),
+                    purchase,
+                    selling,
+                    opening,
+                    minimum,
+                    discount,
+                    tax,
+                    optional_text(data.description, max_length=1000),
                     1 if data.track_stock else 0,
                 ),
             )
@@ -253,7 +255,10 @@ class ProductService:
                     notes="ওপেনিং স্টক",
                 )
             self.audit.log(
-                "product", pid, "create", f"প্রোডাক্ট তৈরি: {name} ({sku})",
+                "product",
+                pid,
+                "create",
+                f"প্রোডাক্ট তৈরি: {name} ({sku})",
                 after={"sku": sku, "selling_price": selling, "opening_qty": opening},
             )
         return pid
@@ -264,9 +269,7 @@ class ProductService:
         name = require_text(data.name, "প্রোডাক্টের নাম", max_length=200)
         sku = validate_sku(data.sku)
         self.units.get(require_id(data.unit_id, "ইউনিট"))
-        if self.db.query_one(
-            "SELECT id FROM products WHERE sku=? AND id<>?", (sku, product_id)
-        ):
+        if self.db.query_one("SELECT id FROM products WHERE sku=? AND id<>?", (sku, product_id)):
             raise DuplicateError(f"'{sku}' এসকেইউ আগে থেকেই রয়েছে")
         purchase = require_non_negative_money(data.purchase_price, "পারচেজ মূল্য")
         selling = require_non_negative_money(data.selling_price, "সেলিং মূল্য")
@@ -279,17 +282,27 @@ class ProductService:
                           updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
                     WHERE id=?""",
                 (
-                    name, normalize_search(name), sku, data.category_id, data.unit_id,
-                    optional_text(data.brand, max_length=120), purchase, selling,
+                    name,
+                    normalize_search(name),
+                    sku,
+                    data.category_id,
+                    data.unit_id,
+                    optional_text(data.brand, max_length=120),
+                    purchase,
+                    selling,
                     require_non_negative_int(data.min_stock_qty, "মিনিমাম স্টক"),
                     require_percent_bp(data.discount_bp, "প্রোডাক্ট ডিস্কাউন্ট"),
                     require_percent_bp(data.tax_bp, "ট্যাক্স"),
                     optional_text(data.description, max_length=1000),
-                    1 if data.track_stock else 0, product_id,
+                    1 if data.track_stock else 0,
+                    product_id,
                 ),
             )
             self.audit.log(
-                "product", product_id, "update", f"প্রোডাক্ট হালনাগাদ: {name}",
+                "product",
+                product_id,
+                "update",
+                f"প্রোডাক্ট হালনাগাদ: {name}",
                 before={"sku": before["sku"], "selling_price": before["selling_price"]},
                 after={"sku": sku, "selling_price": selling},
             )
@@ -315,9 +328,7 @@ class ProductService:
             ("purchase_return_items", "পারচেজ রিটার্ন"),
         ):
             if int(self.db.scalar(f"SELECT COUNT(*) FROM {table} WHERE product_id=?", (product_id,))):
-                raise BusinessRuleError(
-                    f"এই প্রোডাক্টের {label} হিস্ট্রি রয়েছে — মুছে না ফেলে আর্কাইভ করুন"
-                )
+                raise BusinessRuleError(f"এই প্রোডাক্টের {label} হিস্ট্রি রয়েছে — মুছে না ফেলে আর্কাইভ করুন")
         with self.db.transaction():
             self.db.execute("DELETE FROM stock_movements WHERE product_id=?", (product_id,))
             self.db.execute("DELETE FROM stock_adjustments WHERE product_id=?", (product_id,))
@@ -396,9 +407,7 @@ class ProductService:
         order_by = sort_columns.get(sort, "p.name_normalized")
         direction = "DESC" if descending else "ASC"
         clause = " AND ".join(where)
-        total = int(
-            self.db.scalar(f"SELECT COUNT(*) FROM products p WHERE {clause}", params)
-        )
+        total = int(self.db.scalar(f"SELECT COUNT(*) FROM products p WHERE {clause}", params))
         rows = self.db.query(
             f"""SELECT p.*, u.name AS unit_name, u.symbol AS unit_symbol, u.decimal_precision,
                        c.name AS category_name,

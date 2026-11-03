@@ -11,7 +11,7 @@ Financial rules (docs/FINANCIAL_POLICY.md §5):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from ..core.errors import BusinessRuleError, NotFoundError, ValidationError
@@ -46,9 +46,14 @@ class PurchaseReturnLine:
 
 class SalesReturnService:
     def __init__(
-        self, db: Database, *, settings: SettingsService | None = None,
-        audit: AuditService | None = None, inventory: InventoryService | None = None,
-        numbering: NumberingService | None = None, cash: CashService | None = None,
+        self,
+        db: Database,
+        *,
+        settings: SettingsService | None = None,
+        audit: AuditService | None = None,
+        inventory: InventoryService | None = None,
+        numbering: NumberingService | None = None,
+        cash: CashService | None = None,
         customer_payments: CustomerPaymentService | None = None,
     ) -> None:
         self.db = db
@@ -70,9 +75,15 @@ class SalesReturnService:
         return [dict(r) for r in rows if r["returnable_qty"] > 0]
 
     def create(
-        self, *, sale_id: int, lines: list[SalesReturnLine], reason: str,
-        refund_amount: int = 0, refund_method_id: int | None = None,
-        return_date: str | date | None = None, notes: str = "",
+        self,
+        *,
+        sale_id: int,
+        lines: list[SalesReturnLine],
+        reason: str,
+        refund_amount: int = 0,
+        refund_method_id: int | None = None,
+        return_date: str | date | None = None,
+        notes: str = "",
     ) -> dict[str, Any]:
         require_id(sale_id, "ইনভয়েস")
         sale = self.db.query_one("SELECT * FROM sales WHERE id=?", (sale_id,))
@@ -98,23 +109,27 @@ class SalesReturnService:
                 raise NotFoundError("ইনভয়েস আইটেম খুঁজে পাওয়া যায়নি")
             if line.quantity <= 0:
                 raise ValidationError("রিটার্ন পরিমাণ ধনাত্মক হতে হবে")
-            already = int(self.db.scalar(
-                "SELECT COALESCE(SUM(quantity),0) FROM sales_return_items WHERE sale_item_id=?",
-                (line.sale_item_id,),
-            ))
+            already = int(
+                self.db.scalar(
+                    "SELECT COALESCE(SUM(quantity),0) FROM sales_return_items WHERE sale_item_id=?",
+                    (line.sale_item_id,),
+                )
+            )
             returnable = int(item["quantity"]) - already
             if line.quantity > returnable:
-                raise ValidationError(
-                    f"'{item['product_name']}' — সর্বোচ্চ {returnable} পরিমাণ রিটার্ন করা যাবে"
+                raise ValidationError(f"'{item['product_name']}' — সর্বোচ্চ {returnable} পরিমাণ রিটার্ন করা যাবে")
+            prev_amount = int(
+                self.db.scalar(
+                    "SELECT COALESCE(SUM(amount),0) FROM sales_return_items WHERE sale_item_id=?",
+                    (line.sale_item_id,),
                 )
-            prev_amount = int(self.db.scalar(
-                "SELECT COALESCE(SUM(amount),0) FROM sales_return_items WHERE sale_item_id=?",
-                (line.sale_item_id,),
-            ))
-            prev_cost = int(self.db.scalar(
-                "SELECT COALESCE(SUM(cost_amount),0) FROM sales_return_items WHERE sale_item_id=?",
-                (line.sale_item_id,),
-            ))
+            )
+            prev_cost = int(
+                self.db.scalar(
+                    "SELECT COALESCE(SUM(cost_amount),0) FROM sales_return_items WHERE sale_item_id=?",
+                    (line.sale_item_id,),
+                )
+            )
             line_value = int(item["net_amount"]) + int(item["tax_amount"])
             if line.quantity == returnable:
                 amount = line_value - prev_amount
@@ -124,9 +139,12 @@ class SalesReturnService:
                 cost_amount = round_div(int(item["total_cost"]) * line.quantity, int(item["quantity"]))
             prepared.append(
                 {
-                    "item": dict(item), "quantity": line.quantity, "condition": line.condition,
+                    "item": dict(item),
+                    "quantity": line.quantity,
+                    "condition": line.condition,
                     "reason": optional_text(line.reason, max_length=200) or reason,
-                    "amount": amount, "cost_amount": cost_amount,
+                    "amount": amount,
+                    "cost_amount": cost_amount,
                     "unit_revenue": (
                         round_div(amount * MILLI_PER_UNIT, line.quantity) if line.quantity else 0
                     ),
@@ -138,14 +156,10 @@ class SalesReturnService:
         due_adjusted = min(total_amount, outstanding)
         remaining = total_amount - due_adjusted
         if refund_amount > remaining:
-            raise ValidationError(
-                "রিফান্ডের পরিমাণ সমন্বয়ের পর অবশিষ্ট টাকার চেয়ে বেশি হতে পারে না"
-            )
+            raise ValidationError("রিফান্ডের পরিমাণ সমন্বয়ের পর অবশিষ্ট টাকার চেয়ে বেশি হতে পারে না")
         advance_created = remaining - refund_amount
         if advance_created > 0 and sale["customer_id"] is None:
-            raise ValidationError(
-                "কাস্টমার ছাড়া ইনভয়েসে অ্যাডভান্স রাখা যায় না — সম্পূর্ণ টাকা রিফান্ড করুন"
-            )
+            raise ValidationError("কাস্টমার ছাড়া ইনভয়েসে অ্যাডভান্স রাখা যায় না — সম্পূর্ণ টাকা রিফান্ড করুন")
         method = None
         if refund_amount > 0:
             require_id(refund_method_id, "রিফান্ড পেমেন্ট মেথড")
@@ -170,9 +184,20 @@ class SalesReturnService:
                     refund_method_id, reason, notes, cash_session_id)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    return_no, sale_id, sale["customer_id"], day, total_amount, refund_amount,
-                    due_adjusted, advance_created, cost_reversed, write_off,
-                    refund_method_id, reason, optional_text(notes, max_length=500), session_id,
+                    return_no,
+                    sale_id,
+                    sale["customer_id"],
+                    day,
+                    total_amount,
+                    refund_amount,
+                    due_adjusted,
+                    advance_created,
+                    cost_reversed,
+                    write_off,
+                    refund_method_id,
+                    reason,
+                    optional_text(notes, max_length=500),
+                    session_id,
                 ),
             )
             for p in prepared:
@@ -183,9 +208,16 @@ class SalesReturnService:
                         unit_cost, cost_amount, condition, reason)
                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        return_id, int(item["id"]), int(item["product_id"]), p["quantity"],
-                        p["unit_revenue"], p["amount"], int(item["unit_cost"]), p["cost_amount"],
-                        p["condition"], p["reason"],
+                        return_id,
+                        int(item["id"]),
+                        int(item["product_id"]),
+                        p["quantity"],
+                        p["unit_revenue"],
+                        p["amount"],
+                        int(item["unit_cost"]),
+                        p["cost_amount"],
+                        p["condition"],
+                        p["reason"],
                     ),
                 )
                 self.db.execute(
@@ -194,11 +226,16 @@ class SalesReturnService:
                 )
                 if p["condition"] == "restock":
                     self.inventory.apply_movement(
-                        product_id=int(item["product_id"]), qty_delta=p["quantity"],
-                        movement_type="sales_return_restock", movement_date=day,
-                        unit_cost=int(item["unit_cost"]), received_value=p["cost_amount"],
-                        reference_type="sales_return", reference_id=return_id,
-                        notes=f"{return_no} — {reason}", allow_negative=True,
+                        product_id=int(item["product_id"]),
+                        qty_delta=p["quantity"],
+                        movement_type="sales_return_restock",
+                        movement_date=day,
+                        unit_cost=int(item["unit_cost"]),
+                        received_value=p["cost_amount"],
+                        reference_type="sales_return",
+                        reference_id=return_id,
+                        notes=f"{return_no} — {reason}",
+                        allow_negative=True,
                     )
             if sale["customer_id"] is not None:
                 self.db.execute(
@@ -207,9 +244,13 @@ class SalesReturnService:
                 )
             if refund_amount > 0 and method is not None and method["is_cash"] and session_id is not None:
                 self.cash.record_movement(
-                    session_id=session_id, movement_type="sales_return_refund", amount=-refund_amount,
-                    payment_method_id=refund_method_id, reference_type="sales_return",
-                    reference_id=return_id, notes=return_no,
+                    session_id=session_id,
+                    movement_type="sales_return_refund",
+                    amount=-refund_amount,
+                    payment_method_id=refund_method_id,
+                    reference_type="sales_return",
+                    reference_id=return_id,
+                    notes=return_no,
                 )
             fully = self.db.query_one(
                 """SELECT COUNT(*) AS remaining FROM sale_items
@@ -224,29 +265,49 @@ class SalesReturnService:
                     paid_amount, due_amount, payment_summary, reference_type, reference_id, notes)
                    VALUES ('sales_return', ?, ?, 'customer', ?, ?, ?, ?, 0, ?, 'sales_return', ?, ?)""",
                 (
-                    return_no, day, sale["customer_id"],
-                    str(self.db.scalar(
-                        "SELECT COALESCE(name,'') FROM customers WHERE id=?",
-                        (sale["customer_id"],), default="")),
-                    total_amount, refund_amount,
-                    method["name"] if method is not None else "", return_id, reason,
+                    return_no,
+                    day,
+                    sale["customer_id"],
+                    str(
+                        self.db.scalar(
+                            "SELECT COALESCE(name,'') FROM customers WHERE id=?",
+                            (sale["customer_id"],),
+                            default="",
+                        )
+                    ),
+                    total_amount,
+                    refund_amount,
+                    method["name"] if method is not None else "",
+                    return_id,
+                    reason,
                 ),
             )
             self.audit.log(
-                "sales_return", return_id, "create",
+                "sales_return",
+                return_id,
+                "create",
                 f"সেলস রিটার্ন {return_no} — {total_amount}, রিফান্ড {refund_amount}",
                 after={"total": total_amount, "restocked_cost": cost_reversed, "write_off": write_off},
             )
         return {
-            "id": return_id, "return_no": return_no, "total_amount": total_amount,
-            "refund_amount": refund_amount, "due_adjusted": due_adjusted,
-            "advance_created": advance_created, "cost_reversed": cost_reversed,
+            "id": return_id,
+            "return_no": return_no,
+            "total_amount": total_amount,
+            "refund_amount": refund_amount,
+            "due_adjusted": due_adjusted,
+            "advance_created": advance_created,
+            "cost_reversed": cost_reversed,
             "write_off_cost": write_off,
         }
 
     def search(
-        self, *, start: str | None = None, end: str | None = None,
-        customer_id: int | None = None, limit: int = 50, offset: int = 0,
+        self,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        customer_id: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> dict[str, Any]:
         where = ["1=1"]
         params: list[Any] = []
@@ -276,7 +337,8 @@ class SalesReturnService:
             raise NotFoundError("রিটার্ন খুঁজে পাওয়া যায়নি")
         data = dict(row)
         data["items"] = [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT sri.*, si.product_name, si.unit_name FROM sales_return_items sri
                      JOIN sale_items si ON si.id=sri.sale_item_id
                     WHERE sri.return_id=? ORDER BY sri.id""",
@@ -288,9 +350,14 @@ class SalesReturnService:
 
 class PurchaseReturnService:
     def __init__(
-        self, db: Database, *, settings: SettingsService | None = None,
-        audit: AuditService | None = None, inventory: InventoryService | None = None,
-        numbering: NumberingService | None = None, cash: CashService | None = None,
+        self,
+        db: Database,
+        *,
+        settings: SettingsService | None = None,
+        audit: AuditService | None = None,
+        inventory: InventoryService | None = None,
+        numbering: NumberingService | None = None,
+        cash: CashService | None = None,
         supplier_payments: SupplierPaymentService | None = None,
     ) -> None:
         self.db = db
@@ -312,9 +379,15 @@ class PurchaseReturnService:
         return [dict(r) for r in rows if r["returnable_qty"] > 0]
 
     def create(
-        self, *, purchase_id: int, lines: list[PurchaseReturnLine], reason: str,
-        refund_amount: int = 0, refund_method_id: int | None = None,
-        return_date: str | date | None = None, notes: str = "",
+        self,
+        *,
+        purchase_id: int,
+        lines: list[PurchaseReturnLine],
+        reason: str,
+        refund_amount: int = 0,
+        refund_method_id: int | None = None,
+        return_date: str | date | None = None,
+        notes: str = "",
     ) -> dict[str, Any]:
         require_id(purchase_id, "পারচেজ")
         purchase = self.db.query_one("SELECT * FROM purchases WHERE id=?", (purchase_id,))
@@ -339,26 +412,32 @@ class PurchaseReturnService:
                 raise NotFoundError("পারচেজ আইটেম খুঁজে পাওয়া যায়নি")
             if line.quantity <= 0:
                 raise ValidationError("রিটার্ন পরিমাণ ধনাত্মক হতে হবে")
-            already = int(self.db.scalar(
-                "SELECT COALESCE(SUM(quantity),0) FROM purchase_return_items WHERE purchase_item_id=?",
-                (line.purchase_item_id,),
-            ))
+            already = int(
+                self.db.scalar(
+                    "SELECT COALESCE(SUM(quantity),0) FROM purchase_return_items WHERE purchase_item_id=?",
+                    (line.purchase_item_id,),
+                )
+            )
             returnable = int(item["quantity"]) - already
             if line.quantity > returnable:
-                raise ValidationError(
-                    f"'{item['product_name']}' — সর্বোচ্চ {returnable} পরিমাণ রিটার্ন করা যাবে"
+                raise ValidationError(f"'{item['product_name']}' — সর্বোচ্চ {returnable} পরিমাণ রিটার্ন করা যাবে")
+            prev_amount = int(
+                self.db.scalar(
+                    "SELECT COALESCE(SUM(amount),0) FROM purchase_return_items WHERE purchase_item_id=?",
+                    (line.purchase_item_id,),
                 )
-            prev_amount = int(self.db.scalar(
-                "SELECT COALESCE(SUM(amount),0) FROM purchase_return_items WHERE purchase_item_id=?",
-                (line.purchase_item_id,),
-            ))
+            )
             if line.quantity == returnable:
                 amount = int(item["net_amount"]) - prev_amount
             else:
                 amount = round_div(int(item["net_amount"]) * line.quantity, int(item["quantity"]))
             prepared.append(
-                {"item": dict(item), "quantity": line.quantity, "amount": amount,
-                 "reason": optional_text(line.reason, max_length=200) or reason}
+                {
+                    "item": dict(item),
+                    "quantity": line.quantity,
+                    "amount": amount,
+                    "reason": optional_text(line.reason, max_length=200) or reason,
+                }
             )
 
         total_amount = sum(p["amount"] for p in prepared)
@@ -388,9 +467,18 @@ class PurchaseReturnService:
                     payable_adjusted, advance_created, refund_method_id, reason, notes, cash_session_id)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    return_no, purchase_id, purchase["supplier_id"], day, total_amount,
-                    refund_amount, payable_adjusted, advance_created, refund_method_id,
-                    reason, optional_text(notes, max_length=500), session_id,
+                    return_no,
+                    purchase_id,
+                    purchase["supplier_id"],
+                    day,
+                    total_amount,
+                    refund_amount,
+                    payable_adjusted,
+                    advance_created,
+                    refund_method_id,
+                    reason,
+                    optional_text(notes, max_length=500),
+                    session_id,
                 ),
             )
             for p in prepared:
@@ -400,8 +488,13 @@ class PurchaseReturnService:
                        (return_id, purchase_item_id, product_id, quantity, unit_cost, amount, reason)
                        VALUES (?,?,?,?,?,?,?)""",
                     (
-                        return_id, int(item["id"]), int(item["product_id"]), p["quantity"],
-                        int(item["effective_cost"]), p["amount"], p["reason"],
+                        return_id,
+                        int(item["id"]),
+                        int(item["product_id"]),
+                        p["quantity"],
+                        int(item["effective_cost"]),
+                        p["amount"],
+                        p["reason"],
                     ),
                 )
                 self.db.execute(
@@ -409,11 +502,16 @@ class PurchaseReturnService:
                     (p["quantity"], int(item["id"])),
                 )
                 self.inventory.apply_movement(
-                    product_id=int(item["product_id"]), qty_delta=-p["quantity"],
-                    movement_type="purchase_return", movement_date=day,
-                    unit_cost=int(item["effective_cost"]), issued_value=p["amount"],
-                    reference_type="purchase_return", reference_id=return_id,
-                    notes=f"{return_no} — {reason}", allow_negative=True,
+                    product_id=int(item["product_id"]),
+                    qty_delta=-p["quantity"],
+                    movement_type="purchase_return",
+                    movement_date=day,
+                    unit_cost=int(item["effective_cost"]),
+                    issued_value=p["amount"],
+                    reference_type="purchase_return",
+                    reference_id=return_id,
+                    notes=f"{return_no} — {reason}",
+                    allow_negative=True,
                 )
             self.db.execute(
                 "UPDATE suppliers SET current_payable = current_payable - ? WHERE id=?",
@@ -421,9 +519,13 @@ class PurchaseReturnService:
             )
             if refund_amount > 0 and method is not None and method["is_cash"] and session_id is not None:
                 self.cash.record_movement(
-                    session_id=session_id, movement_type="purchase_return_refund", amount=refund_amount,
-                    payment_method_id=refund_method_id, reference_type="purchase_return",
-                    reference_id=return_id, notes=return_no,
+                    session_id=session_id,
+                    movement_type="purchase_return_refund",
+                    amount=refund_amount,
+                    payment_method_id=refund_method_id,
+                    reference_type="purchase_return",
+                    reference_id=return_id,
+                    notes=return_no,
                 )
             fully = self.db.query_one(
                 "SELECT COUNT(*) AS remaining FROM purchase_items WHERE purchase_id=? AND returned_qty < quantity",
@@ -437,26 +539,44 @@ class PurchaseReturnService:
                     paid_amount, due_amount, payment_summary, reference_type, reference_id, notes)
                    VALUES ('purchase_return', ?, ?, 'supplier', ?, ?, ?, ?, 0, ?, 'purchase_return', ?, ?)""",
                 (
-                    return_no, day, purchase["supplier_id"],
-                    str(self.db.scalar("SELECT name FROM suppliers WHERE id=?",
-                                       (purchase["supplier_id"],), default="")),
-                    total_amount, refund_amount,
-                    method["name"] if method is not None else "", return_id, reason,
+                    return_no,
+                    day,
+                    purchase["supplier_id"],
+                    str(
+                        self.db.scalar(
+                            "SELECT name FROM suppliers WHERE id=?", (purchase["supplier_id"],), default=""
+                        )
+                    ),
+                    total_amount,
+                    refund_amount,
+                    method["name"] if method is not None else "",
+                    return_id,
+                    reason,
                 ),
             )
             self.audit.log(
-                "purchase_return", return_id, "create",
+                "purchase_return",
+                return_id,
+                "create",
                 f"পারচেজ রিটার্ন {return_no} — {total_amount}",
             )
         return {
-            "id": return_id, "return_no": return_no, "total_amount": total_amount,
-            "refund_amount": refund_amount, "payable_adjusted": payable_adjusted,
+            "id": return_id,
+            "return_no": return_no,
+            "total_amount": total_amount,
+            "refund_amount": refund_amount,
+            "payable_adjusted": payable_adjusted,
             "advance_created": advance_created,
         }
 
     def search(
-        self, *, start: str | None = None, end: str | None = None,
-        supplier_id: int | None = None, limit: int = 50, offset: int = 0,
+        self,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        supplier_id: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> dict[str, Any]:
         where = ["1=1"]
         params: list[Any] = []

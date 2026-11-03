@@ -109,9 +109,7 @@ def calculate_cart(
         if item.unit_price < 0:
             raise ValidationError("প্রোডাক্টের মূল্য ঋণাত্মক হতে পারে না")
         gross = round_div(item.unit_price * item.quantity, MILLI_PER_UNIT)
-        discount = _line_discount(
-            gross, item.discount_type, item.discount_value, max_bp=max_item_discount_bp
-        )
+        discount = _line_discount(gross, item.discount_type, item.discount_value, max_bp=max_item_discount_bp)
         lines.append(
             CalculatedLine(
                 product_id=item.product_id,

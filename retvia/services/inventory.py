@@ -96,8 +96,13 @@ class InventoryService:
                     reference_id, movement_date, notes)
                    VALUES (?,?,0,0,0,?,0,0,?,?,?,?)""",
                 (
-                    product_id, movement_type, unit_cost or 0,
-                    reference_type, reference_id, movement_date, notes,
+                    product_id,
+                    movement_type,
+                    unit_cost or 0,
+                    reference_type,
+                    reference_id,
+                    movement_date,
+                    notes,
                 ),
             )
             return MovementResult(mid, 0, 0, 0, 0, 0, 0)
@@ -138,12 +143,12 @@ class InventoryService:
                 value_after = incoming
                 avg_after = round_div(incoming * MILLI_PER_UNIT, qty_after)
             value_delta = value_after - value_before
-            issue_cost = 0
         else:
             # ---- issue: cost at the prevailing MAC (snapshotted for the caller)
             cost = int(unit_cost if unit_cost is not None else avg_before)
             issued = (
-                int(issued_value) if issued_value is not None
+                int(issued_value)
+                if issued_value is not None
                 else round_div(cost * (-qty_delta), MILLI_PER_UNIT)
             )
             if qty_after == 0 and issued_value is None:
@@ -152,7 +157,6 @@ class InventoryService:
             value_after = value_before - issued
             avg_after = avg_before if qty_after != 0 else 0
             value_delta = -issued
-            issue_cost = issued
 
         mid = self.db.insert(
             """INSERT INTO stock_movements
@@ -160,8 +164,18 @@ class InventoryService:
                 value_delta, avg_cost_after, reference_type, reference_id, movement_date, notes)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                product_id, movement_type, qty_delta, qty_before, qty_after, cost,
-                value_delta, avg_after, reference_type, reference_id, movement_date, notes,
+                product_id,
+                movement_type,
+                qty_delta,
+                qty_before,
+                qty_after,
+                cost,
+                value_delta,
+                avg_after,
+                reference_type,
+                reference_id,
+                movement_date,
+                notes,
             ),
         )
         self.db.execute(
@@ -232,15 +246,25 @@ class InventoryService:
                     value_delta, reason, adjusted_by, adjustment_date, notes)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    number, product_id, adjustment_type, delta, result.unit_cost,
-                    result.value_delta, reason, actor, day, notes,
+                    number,
+                    product_id,
+                    adjustment_type,
+                    delta,
+                    result.unit_cost,
+                    result.value_delta,
+                    reason,
+                    actor,
+                    day,
+                    notes,
                 ),
             )
             self.db.execute(
                 "UPDATE stock_movements SET reference_id=? WHERE id=?", (adj_id, result.movement_id)
             )
             self.audit.log(
-                "stock_adjustment", adj_id, "create",
+                "stock_adjustment",
+                adj_id,
+                "create",
                 f"{product['name']} — {adjustment_type} {format_quantity(delta)} ({reason})",
                 after={"qty_delta": delta, "value_delta": result.value_delta},
             )

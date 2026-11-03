@@ -139,10 +139,7 @@ class SalesService:
         paid = sum(p.amount for p in data.payments)
         require_non_negative_money(paid, "পেমেন্ট")
         if paid > totals.grand_total:
-            raise ValidationError(
-                "পরিশোধিত টাকা ইনভয়েস মোটের চেয়ে বেশি হতে পারে না — "
-                "অতিরিক্ত টাকা ফেরত দিন"
-            )
+            raise ValidationError("পরিশোধিত টাকা ইনভয়েস মোটের চেয়ে বেশি হতে পারে না — অতিরিক্ত টাকা ফেরত দিন")
         due = totals.grand_total - paid
         if due > 0 and data.customer_id is None:
             raise ValidationError("বাকি বিক্রির জন্য কাস্টমার নির্বাচন করা আবশ্যক")
@@ -169,10 +166,23 @@ class SalesService:
                     status, notes, cashier, cash_session_id)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'completed', ?, ?, ?)""",
                 (
-                    invoice_no, data.customer_id, day, now.strftime("%H:%M:%S"),
-                    totals.subtotal, totals.item_discount, data.invoice_discount_type,
-                    data.invoice_discount_value, totals.invoice_discount, totals.tax_amount,
-                    totals.grand_total, paid, due, 0, notes, data.cashier, session_id,
+                    invoice_no,
+                    data.customer_id,
+                    day,
+                    now.strftime("%H:%M:%S"),
+                    totals.subtotal,
+                    totals.item_discount,
+                    data.invoice_discount_type,
+                    data.invoice_discount_value,
+                    totals.invoice_discount,
+                    totals.tax_amount,
+                    totals.grand_total,
+                    paid,
+                    due,
+                    0,
+                    notes,
+                    data.cashier,
+                    session_id,
                 ),
             )
 
@@ -197,11 +207,22 @@ class SalesService:
                         unit_cost, total_cost)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        sale_id, line.product_id, line.name, line.unit_name, line.quantity,
-                        line.unit_price, line.gross_amount, line.discount_type,
-                        line.discount_value, line.discount_amount,
-                        line.invoice_discount_allocated, line.net_amount, line.tax_bp,
-                        line.tax_amount, movement.unit_cost, line_cost,
+                        sale_id,
+                        line.product_id,
+                        line.name,
+                        line.unit_name,
+                        line.quantity,
+                        line.unit_price,
+                        line.gross_amount,
+                        line.discount_type,
+                        line.discount_value,
+                        line.discount_amount,
+                        line.invoice_discount_allocated,
+                        line.net_amount,
+                        line.tax_bp,
+                        line.tax_amount,
+                        movement.unit_cost,
+                        line_cost,
                     ),
                 )
             self.db.execute("UPDATE sales SET total_cost=? WHERE id=?", (total_cost, sale_id))
@@ -213,7 +234,10 @@ class SalesService:
                        (sale_id, payment_method_id, amount, paid_at, reference, notes)
                        VALUES (?,?,?,?,?,?)""",
                     (
-                        sale_id, payment.method_id, payment.amount, now.isoformat(timespec="seconds"),
+                        sale_id,
+                        payment.method_id,
+                        payment.amount,
+                        now.isoformat(timespec="seconds"),
                         optional_text(payment.reference, max_length=120),
                         optional_text(payment.notes, max_length=300),
                     ),
@@ -238,9 +262,7 @@ class SalesService:
                     (due, data.customer_id),
                 )
                 customer_name = str(
-                    self.db.scalar(
-                        "SELECT name FROM customers WHERE id=?", (data.customer_id,), default=""
-                    )
+                    self.db.scalar("SELECT name FROM customers WHERE id=?", (data.customer_id,), default="")
                 )
 
             self.db.execute(
@@ -249,16 +271,29 @@ class SalesService:
                     paid_amount, due_amount, payment_summary, reference_type, reference_id, notes)
                    VALUES ('sale', ?, ?, 'customer', ?, ?, ?, ?, ?, ?, 'sale', ?, ?)""",
                 (
-                    invoice_no, day, data.customer_id, customer_name, totals.grand_total,
-                    paid, due, ", ".join(dict.fromkeys(payment_summary)), sale_id, notes,
+                    invoice_no,
+                    day,
+                    data.customer_id,
+                    customer_name,
+                    totals.grand_total,
+                    paid,
+                    due,
+                    ", ".join(dict.fromkeys(payment_summary)),
+                    sale_id,
+                    notes,
                 ),
             )
             self.audit.log(
-                "sale", sale_id, "create",
+                "sale",
+                sale_id,
+                "create",
                 f"সেলস {invoice_no} — মোট {totals.grand_total} পয়সা, বাকি {due}",
                 after={
-                    "invoice_no": invoice_no, "grand_total": totals.grand_total,
-                    "paid": paid, "due": due, "cost": total_cost,
+                    "invoice_no": invoice_no,
+                    "grand_total": totals.grand_total,
+                    "paid": paid,
+                    "due": due,
+                    "cost": total_cost,
                 },
             )
 
@@ -355,8 +390,12 @@ class SalesService:
                 (f" [বাতিল: {reason}]", sale_id),
             )
             self.audit.log(
-                "sale", sale_id, "cancel", f"সেলস বাতিল {sale['invoice_no']} — {reason}",
-                before={"status": sale["status"]}, after={"status": "cancelled"},
+                "sale",
+                sale_id,
+                "cancel",
+                f"সেলস বাতিল {sale['invoice_no']} — {reason}",
+                before={"status": sale["status"]},
+                after={"status": "cancelled"},
             )
         return {"id": sale_id, "status": "cancelled", "restocked_items": len(items)}
 
@@ -373,10 +412,7 @@ class SalesService:
             raise NotFoundError("ইনভয়েস খুঁজে পাওয়া যায়নি")
         sale = dict(row)
         sale["items"] = [
-            dict(r)
-            for r in self.db.query(
-                "SELECT * FROM sale_items WHERE sale_id=? ORDER BY id", (sale_id,)
-            )
+            dict(r) for r in self.db.query("SELECT * FROM sale_items WHERE sale_id=? ORDER BY id", (sale_id,))
         ]
         sale["payments"] = [
             dict(r)

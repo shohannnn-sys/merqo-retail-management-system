@@ -22,10 +22,9 @@ _SENSITIVE_KEYS = {
 def _sanitize(payload: Any) -> Any:
     if isinstance(payload, dict):
         return {
-            k: ("[redacted]" if k.lower() in _SENSITIVE_KEYS else _sanitize(v))
-            for k, v in payload.items()
+            k: ("[redacted]" if k.lower() in _SENSITIVE_KEYS else _sanitize(v)) for k, v in payload.items()
         }
-    if isinstance(payload, (list, tuple)):
+    if isinstance(payload, list | tuple):
         return [_sanitize(v) for v in payload]
     return payload
 
@@ -61,8 +60,42 @@ class AuditService:
         )
 
     def recent(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+        rows = self.db.query("SELECT * FROM audit_logs ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
+        return [dict(r) for r in rows]
+
+    def search(
+        self,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        actor: str = "",
+        action: str = "",
+        entity_type: str = "",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Filter the audit trail by date, actor, action or entity."""
+        where = ["1=1"]
+        params: list[Any] = []
+        if start:
+            where.append("substr(created_at,1,10) >= ?")
+            params.append(start)
+        if end:
+            where.append("substr(created_at,1,10) <= ?")
+            params.append(end)
+        if actor:
+            where.append("actor = ?")
+            params.append(actor)
+        if action:
+            where.append("action = ?")
+            params.append(action)
+        if entity_type:
+            where.append("entity_type = ?")
+            params.append(entity_type)
+        clause = " AND ".join(where)
         rows = self.db.query(
-            "SELECT * FROM audit_logs ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
+            f"SELECT * FROM audit_logs WHERE {clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
         )
         return [dict(r) for r in rows]
 

@@ -49,7 +49,9 @@ def date_range_for(preset: str, *, reference: date | None = None) -> tuple[str, 
 
 class FinanceService:
     def __init__(
-        self, db: Database, settings: SettingsService | None = None,
+        self,
+        db: Database,
+        settings: SettingsService | None = None,
         inventory: InventoryService | None = None,
     ) -> None:
         self.db = db
@@ -74,7 +76,7 @@ class FinanceService:
               WHERE s.status <> 'cancelled' AND s.sale_date BETWEEN ? AND ?""",
             (start, end),
         )
-        return {k: int(row[k]) for k in row.keys()} if row else {}
+        return {k: int(row[k]) for k in row.keys()} if row else {}  # noqa: SIM118 - sqlite3.Row
 
     def return_components(self, start: str, end: str) -> dict[str, int]:
         row = self.db.query_one(
@@ -91,7 +93,7 @@ class FinanceService:
                WHERE r.return_date BETWEEN ? AND ?""",
             (start, end),
         )
-        data = {k: int(row[k]) for k in row.keys()} if row else {}
+        data = {k: int(row[k]) for k in row.keys()} if row else {}  # noqa: SIM118 - sqlite3.Row
         data["returned_tax"] = data.get("returned_total", 0) - data.get("returned_revenue", 0)
         return data
 
@@ -105,21 +107,26 @@ class FinanceService:
         net_sales = gross_sales - discounts - returned_revenue
         cogs = sales.get("gross_cogs", 0) - returns.get("cost_reversed", 0)
         gross_profit = net_sales - cogs
-        operating_expense = int(self.db.scalar(
-            "SELECT COALESCE(SUM(amount),0) FROM expenses WHERE expense_date BETWEEN ? AND ?",
-            (start, end),
-        ))
+        operating_expense = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(amount),0) FROM expenses WHERE expense_date BETWEEN ? AND ?",
+                (start, end),
+            )
+        )
         stock_write_off = self.inventory.write_off_value(start, end)
         return_write_off = returns.get("write_off_cost", 0)
         total_write_off = stock_write_off + return_write_off
         net_profit = gross_profit - operating_expense - total_write_off
-        purchase_value = int(self.db.scalar(
-            "SELECT COALESCE(SUM(grand_total),0) FROM purchases "
-            "WHERE status<>'cancelled' AND purchase_date BETWEEN ? AND ?",
-            (start, end),
-        ))
+        purchase_value = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(grand_total),0) FROM purchases "
+                "WHERE status<>'cancelled' AND purchase_date BETWEEN ? AND ?",
+                (start, end),
+            )
+        )
         return {
-            "start": start, "end": end,
+            "start": start,
+            "end": end,
             "gross_sales": gross_sales,
             "item_discount": sales.get("item_discount", 0),
             "invoice_discount": sales.get("invoice_discount", 0),
@@ -137,44 +144,52 @@ class FinanceService:
             "estimated_profit": gross_profit,
             "sale_count": sales.get("sale_count", 0),
             "purchase_value": purchase_value,
-            "gross_margin_bp": (
-                (gross_profit * 10_000 // net_sales) if net_sales > 0 else 0
-            ),
+            "gross_margin_bp": ((gross_profit * 10_000 // net_sales) if net_sales > 0 else 0),
         }
 
     def receivable_payable(self) -> dict[str, int]:
         return {
-            "customer_receivable": int(self.db.scalar(
-                "SELECT COALESCE(SUM(MAX(current_due,0)),0) FROM customers"
-            )),
-            "customer_advance": int(self.db.scalar(
-                "SELECT COALESCE(SUM(MIN(current_due,0)),0) FROM customers"
-            )),
-            "supplier_payable": int(self.db.scalar(
-                "SELECT COALESCE(SUM(MAX(current_payable,0)),0) FROM suppliers"
-            )),
-            "supplier_advance": int(self.db.scalar(
-                "SELECT COALESCE(SUM(MIN(current_payable,0)),0) FROM suppliers"
-            )),
+            "customer_receivable": int(
+                self.db.scalar("SELECT COALESCE(SUM(MAX(current_due,0)),0) FROM customers")
+            ),
+            "customer_advance": int(
+                self.db.scalar("SELECT COALESCE(SUM(MIN(current_due,0)),0) FROM customers")
+            ),
+            "supplier_payable": int(
+                self.db.scalar("SELECT COALESCE(SUM(MAX(current_payable,0)),0) FROM suppliers")
+            ),
+            "supplier_advance": int(
+                self.db.scalar("SELECT COALESCE(SUM(MIN(current_payable,0)),0) FROM suppliers")
+            ),
         }
 
     def collections(self, start: str, end: str) -> dict[str, int]:
-        at_sale = int(self.db.scalar(
-            "SELECT COALESCE(SUM(paid_amount),0) FROM sales "
-            "WHERE status<>'cancelled' AND sale_date BETWEEN ? AND ?", (start, end),
-        ))
-        later = int(self.db.scalar(
-            "SELECT COALESCE(SUM(amount),0) FROM customer_payments WHERE payment_date BETWEEN ? AND ?",
-            (start, end),
-        ))
-        supplier_paid = int(self.db.scalar(
-            "SELECT COALESCE(SUM(amount),0) FROM supplier_payments WHERE payment_date BETWEEN ? AND ?",
-            (start, end),
-        ))
-        purchase_paid = int(self.db.scalar(
-            "SELECT COALESCE(SUM(paid_amount),0) FROM purchases "
-            "WHERE status<>'cancelled' AND purchase_date BETWEEN ? AND ?", (start, end),
-        ))
+        at_sale = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(paid_amount),0) FROM sales "
+                "WHERE status<>'cancelled' AND sale_date BETWEEN ? AND ?",
+                (start, end),
+            )
+        )
+        later = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(amount),0) FROM customer_payments WHERE payment_date BETWEEN ? AND ?",
+                (start, end),
+            )
+        )
+        supplier_paid = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(amount),0) FROM supplier_payments WHERE payment_date BETWEEN ? AND ?",
+                (start, end),
+            )
+        )
+        purchase_paid = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(paid_amount),0) FROM purchases "
+                "WHERE status<>'cancelled' AND purchase_date BETWEEN ? AND ?",
+                (start, end),
+            )
+        )
         return {
             "collected_at_sale": at_sale,
             "collected_later": later,
@@ -242,7 +257,8 @@ class FinanceService:
     # ----------------------------------------------------------------- charts
     def sales_trend(self, start: str, end: str) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT sale_date AS label, COUNT(*) AS count,
                           COALESCE(SUM(grand_total),0) AS amount,
                           COALESCE(SUM(total_cost),0) AS cost
@@ -263,14 +279,18 @@ class FinanceService:
             (start, end),
         )
         expenses = {
-            r["expense_date"]: int(r["total"]) for r in self.db.query(
+            r["expense_date"]: int(r["total"])
+            for r in self.db.query(
                 "SELECT expense_date, SUM(amount) AS total FROM expenses "
-                "WHERE expense_date BETWEEN ? AND ? GROUP BY expense_date", (start, end),
+                "WHERE expense_date BETWEEN ? AND ? GROUP BY expense_date",
+                (start, end),
             )
         }
         return [
             {
-                "label": r["label"], "revenue": int(r["revenue"]), "cost": int(r["cost"]),
+                "label": r["label"],
+                "revenue": int(r["revenue"]),
+                "cost": int(r["cost"]),
                 "gross_profit": int(r["revenue"]) - int(r["cost"]),
                 "expense": expenses.get(r["label"], 0),
                 "net_profit": int(r["revenue"]) - int(r["cost"]) - expenses.get(r["label"], 0),
@@ -280,7 +300,8 @@ class FinanceService:
 
     def purchase_trend(self, start: str, end: str) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT purchase_date AS label, COUNT(*) AS count,
                           COALESCE(SUM(grand_total),0) AS amount
                      FROM purchases WHERE status<>'cancelled' AND purchase_date BETWEEN ? AND ?
@@ -291,7 +312,8 @@ class FinanceService:
 
     def expense_overview(self, start: str, end: str) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT ec.name AS label, COALESCE(SUM(e.amount),0) AS amount, COUNT(e.id) AS count
                      FROM expenses e JOIN expense_categories ec ON ec.id=e.category_id
                     WHERE e.expense_date BETWEEN ? AND ?
@@ -302,7 +324,8 @@ class FinanceService:
 
     def payment_overview(self, start: str, end: str) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT pm.name AS label, COALESCE(SUM(x.amount),0) AS amount, COUNT(*) AS count
                      FROM (
                         SELECT sp.payment_method_id, sp.amount FROM sale_payments sp
@@ -322,7 +345,8 @@ class FinanceService:
     ) -> list[dict[str, Any]]:
         order = "ASC" if slow_moving else "DESC"
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT p.id, p.name, p.sku,
                           COALESCE(SUM(si.quantity),0) AS qty_sold,
                           COALESCE(SUM(si.net_amount),0) AS revenue,
@@ -340,7 +364,8 @@ class FinanceService:
     # ----------------------------------------------------------------- recent
     def recent_sales(self, limit: int = 10) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT s.id, s.invoice_no, s.sale_date, s.grand_total, s.due_amount, s.status,
                           c.name AS customer_name
                      FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
@@ -351,14 +376,56 @@ class FinanceService:
 
     def recent_transactions(self, limit: int = 10) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
-                "SELECT * FROM transactions ORDER BY id DESC LIMIT ?", (limit,)
-            )
+            dict(r) for r in self.db.query("SELECT * FROM transactions ORDER BY id DESC LIMIT ?", (limit,))
         ]
+
+    def transactions(
+        self,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        txn_type: str | None = None,
+        party_type: str = "",
+        party_id: int | None = None,
+        query: str = "",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Immutable financial transaction register with filters."""
+        where = ["1=1"]
+        params: list[Any] = []
+        if start:
+            where.append("txn_date >= ?")
+            params.append(start)
+        if end:
+            where.append("txn_date <= ?")
+            params.append(end)
+        if txn_type:
+            where.append("txn_type = ?")
+            params.append(txn_type)
+        if party_type:
+            where.append("party_type = ?")
+            params.append(party_type)
+        if party_id is not None:
+            where.append("party_id = ?")
+            params.append(party_id)
+        if query:
+            where.append("(txn_no LIKE ? OR party_name LIKE ? OR notes LIKE ?)")
+            pattern = f"%{query}%"
+            params += [pattern, pattern, pattern]
+        clause = " AND ".join(where)
+        total = int(self.db.scalar(f"SELECT COUNT(*) FROM transactions WHERE {clause}", params))
+        rows = self.db.query(
+            f"""SELECT * FROM transactions WHERE {clause}
+                 ORDER BY txn_date DESC, id DESC LIMIT ? OFFSET ?""",
+            [*params, limit, offset],
+        )
+        return {"rows": [dict(r) for r in rows], "total": total}
 
     def recent_payments(self, limit: int = 10) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT * FROM (
                       SELECT cp.receipt_no AS no, cp.payment_date AS date, cp.amount,
                              c.name AS party, 'customer_payment' AS kind
@@ -398,11 +465,13 @@ class FinanceService:
                  FROM sales s JOIN sale_items si ON si.sale_id=s.id
                 WHERE s.status<>'cancelled' GROUP BY s.id"""
         ):
-            if int(r["invoice_discount"]) != int(r["allocated"]) or int(r["expected_net"]) != int(r["actual_net"]):
+            if int(r["invoice_discount"]) != int(r["allocated"]) or int(r["expected_net"]) != int(
+                r["actual_net"]
+            ):
                 problems["invoice_discount_allocation"].append(dict(r))
-        bad = int(self.db.scalar(
-            "SELECT COUNT(*) FROM stock_movements WHERE qty_before + qty_delta <> qty_after"
-        ))
+        bad = int(
+            self.db.scalar("SELECT COUNT(*) FROM stock_movements WHERE qty_before + qty_delta <> qty_after")
+        )
         if bad:
             problems["stock_movement_arithmetic"].append({"invalid_rows": bad})
         integrity_ok, integrity_messages = self.db.integrity_check()

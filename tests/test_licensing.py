@@ -130,8 +130,9 @@ class TestForgeryResistance:
 
     def test_missing_fields_rejected(self):
         with pytest.raises(LicenseError):
-            validate_payload_claims({"product_id": "merqo-retvia", "license_version": 1,
-                                     "license_type": "lifetime"})
+            validate_payload_claims(
+                {"product_id": "merqo-retvia", "license_version": 1, "license_type": "lifetime"}
+            )
 
 
 class TestHardwareFingerprint:
@@ -219,8 +220,10 @@ class TestActivation:
         record = service.active_record()
         tampered = json.loads(record["payload_json"])
         tampered["business_name"] = "হ্যাক করা নাম"
-        db.execute("UPDATE license_activations SET payload_json=? WHERE id=?",
-                   (json.dumps(tampered, ensure_ascii=False), record["id"]))
+        db.execute(
+            "UPDATE license_activations SET payload_json=? WHERE id=?",
+            (json.dumps(tampered, ensure_ascii=False), record["id"]),
+        )
         with pytest.raises(LicenseError, match="স্বাক্ষর"):
             service.verify()
 
@@ -245,7 +248,8 @@ class TestActivation:
     def test_hardware_bound_license_rejects_other_machine(self, db, keypair):
         private, public = keypair
         payload = new_license_payload(
-            business_name="দোকান", business_identity="ID-1",
+            business_name="দোকান",
+            business_identity="ID-1",
             hardware_fingerprint=make_fingerprint(
                 {"machine_guid": "other1", "hostname": "other2", "processor": "other3"}
             ),

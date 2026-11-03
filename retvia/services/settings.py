@@ -50,7 +50,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "receipt_show_logo": "1",
     "receipt_auto_cut": "1",
     "receipt_copies": "1",
-    "receipt_raster_mode": "0",
+    "receipt_raster_mode": "1",
     # backup
     "backup_dir": "",
     "backup_auto_enabled": "1",
@@ -152,6 +152,9 @@ class BusinessProfile:
     tax_number: str = ""
     logo_path: str = ""
     receipt_footer: str = ""
+    tagline: str = ""
+    website: str = ""
+    receipt_header: str = ""
 
     @property
     def is_configured(self) -> bool:
@@ -174,6 +177,9 @@ class BusinessProfileService:
             tax_number=row["tax_number"],
             logo_path=row["logo_path"],
             receipt_footer=row["receipt_footer"],
+            tagline=row["tagline"],
+            website=row["website"],
+            receipt_header=row["receipt_header"],
         )
 
     def update(self, profile: BusinessProfile) -> BusinessProfile:
@@ -183,15 +189,18 @@ class BusinessProfileService:
         address = optional_text(profile.address, max_length=500)
         tax_number = clean_text(profile.tax_number, max_length=64)
         footer = optional_text(profile.receipt_footer, max_length=300)
+        tagline = optional_text(profile.tagline, max_length=200)
+        website = optional_text(profile.website, max_length=200)
+        header = optional_text(profile.receipt_header, max_length=300)
         logo = clean_text(profile.logo_path, max_length=1000)
         with self.db.transaction():
             self.db.execute(
                 """UPDATE business_profile
                       SET name=?, address=?, phone=?, email=?, tax_number=?,
-                          logo_path=?, receipt_footer=?,
+                          logo_path=?, receipt_footer=?, tagline=?, website=?, receipt_header=?,
                           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
                     WHERE id = 1""",
-                (name, address, phone, email, tax_number, logo, footer),
+                (name, address, phone, email, tax_number, logo, footer, tagline, website, header),
             )
         return self.get()
 
@@ -200,9 +209,7 @@ def seed_defaults(db: Database) -> None:
     """Insert standard configuration on a brand-new database (idempotent)."""
     with db.transaction():
         for key, value in DEFAULT_SETTINGS.items():
-            db.execute(
-                "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)", (key, value)
-            )
+            db.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)", (key, value))
         for name, symbol, precision in DEFAULT_UNITS:
             db.execute(
                 """INSERT OR IGNORE INTO units (name, name_normalized, symbol, decimal_precision)

@@ -7,9 +7,10 @@ the CSV export, so an exported file always matches what the user saw.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Callable
+from typing import Any
 
 from ..core.errors import NotFoundError, ValidationError
 from ..core.validation import validate_date_range
@@ -37,6 +38,20 @@ class ReportDefinition:
     builder: Callable[..., list[dict[str, Any]]]
     filters: tuple[str, ...] = ("start", "end")
     description: str = ""
+
+    @property
+    def party_filter(self) -> str:
+        """Which party selector this report can use, if any."""
+        if "customer_id" in self.filters:
+            return "customer"
+        if "supplier_id" in self.filters:
+            return "supplier"
+        return ""
+
+    @property
+    def requires_party(self) -> str:
+        """Ledger reports are meaningless without a specific party."""
+        return self.party_filter if self.id in ("customer_ledger", "supplier_ledger") else ""
 
 
 @dataclass(slots=True)
@@ -105,8 +120,12 @@ class ReportService:
             if column.total and column.kind in ("money", "int", "qty"):
                 totals[column.key] = sum(int(r.get(column.key, 0) or 0) for r in rows)
         return ReportResult(
-            id=definition.id, title=definition.title, columns=definition.columns,
-            rows=rows, totals=totals, meta={"filters": filters, "row_count": len(rows)},
+            id=definition.id,
+            title=definition.title,
+            columns=definition.columns,
+            rows=rows,
+            totals=totals,
+            meta={"filters": filters, "row_count": len(rows)},
         )
 
     # -------------------------------------------------------------- builders
@@ -118,7 +137,8 @@ class ReportService:
             "year": "strftime('%Y', s.sale_date)",
         }[grain]
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT {expr} AS period, COUNT(*) AS invoice_count,
                           COALESCE(SUM(s.subtotal),0) AS gross_sales,
                           COALESCE(SUM(s.item_discount + s.invoice_discount),0) AS discount,
@@ -143,14 +163,15 @@ class ReportService:
         if filters.get("status"):
             where.append("s.status = :status")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT s.invoice_no, s.sale_date, COALESCE(c.name,'ওয়াক-ইন') AS customer,
                           s.subtotal AS gross_sales,
                           s.item_discount + s.invoice_discount AS discount,
                           s.tax_amount AS tax, s.grand_total AS net_total,
                           s.paid_amount AS paid, s.due_amount AS due, s.status
                      FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
-                    WHERE {' AND '.join(where)} ORDER BY s.sale_date, s.id""",
+                    WHERE {" AND ".join(where)} ORDER BY s.sale_date, s.id""",
                 params,
             )
         ]
@@ -159,15 +180,21 @@ class ReportService:
         pnl = self.finance.profit_and_loss(filters["start"], filters["end"])
         if variant == "gross":
             keys = [
-                ("gross_sales", "মোট সেলস"), ("sales_discount", "ডিস্কাউন্ট"),
-                ("sales_returns", "সেলস রিটার্ন"), ("net_sales", "নেট সেলস"),
-                ("cogs", "বিক্রীত পণ্যের খরচ (COGS)"), ("gross_profit", "গ্রস প্রফিট"),
+                ("gross_sales", "মোট সেলস"),
+                ("sales_discount", "ডিস্কাউন্ট"),
+                ("sales_returns", "সেলস রিটার্ন"),
+                ("net_sales", "নেট সেলস"),
+                ("cogs", "বিক্রীত পণ্যের খরচ (COGS)"),
+                ("gross_profit", "গ্রস প্রফিট"),
             ]
         elif variant == "net":
             keys = [
-                ("net_sales", "নেট সেলস"), ("cogs", "বিক্রীত পণ্যের খরচ (COGS)"),
-                ("gross_profit", "গ্রস প্রফিট"), ("operating_expense", "পরিচালন খরচ"),
-                ("total_write_off", "ইনভেন্টরি রাইট-অফ"), ("net_profit", "নেট প্রফিট"),
+                ("net_sales", "নেট সেলস"),
+                ("cogs", "বিক্রীত পণ্যের খরচ (COGS)"),
+                ("gross_profit", "গ্রস প্রফিট"),
+                ("operating_expense", "পরিচালন খরচ"),
+                ("total_write_off", "ইনভেন্টরি রাইট-অফ"),
+                ("net_profit", "নেট প্রফিট"),
             ]
         else:
             keys = [
@@ -192,13 +219,14 @@ class ReportService:
         if filters.get("category_id"):
             where.append("e.category_id = :category_id")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT e.voucher_no, e.expense_date, ec.name AS category,
                           pm.name AS method, e.description, e.amount
                      FROM expenses e
                      JOIN expense_categories ec ON ec.id=e.category_id
                      JOIN payment_methods pm ON pm.id=e.payment_method_id
-                    WHERE {' AND '.join(where)} ORDER BY e.expense_date, e.id""",
+                    WHERE {" AND ".join(where)} ORDER BY e.expense_date, e.id""",
                 filters,
             )
         ]
@@ -208,13 +236,14 @@ class ReportService:
         if filters.get("supplier_id"):
             where.append("p.supplier_id = :supplier_id")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT p.invoice_no, p.purchase_date, s.name AS supplier,
                           p.supplier_invoice_no, p.subtotal AS gross_amount,
                           p.discount_amount AS discount, p.grand_total AS net_total,
                           p.paid_amount AS paid, p.due_amount AS due, p.status
                      FROM purchases p JOIN suppliers s ON s.id=p.supplier_id
-                    WHERE {' AND '.join(where)} ORDER BY p.purchase_date, p.id""",
+                    WHERE {" AND ".join(where)} ORDER BY p.purchase_date, p.id""",
                 filters,
             )
         ]
@@ -230,13 +259,14 @@ class ReportService:
         elif filters.get("stock_filter") == "out":
             where.append("p.stock_qty <= 0 AND p.track_stock=1")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT p.name, p.sku, COALESCE(c.name,'') AS category, u.symbol AS unit,
                           p.stock_qty, p.min_stock_qty, p.avg_cost, p.stock_value,
                           p.selling_price
                      FROM products p JOIN units u ON u.id=p.unit_id
                      LEFT JOIN categories c ON c.id=p.category_id
-                    WHERE {' AND '.join(where)} ORDER BY p.name""",
+                    WHERE {" AND ".join(where)} ORDER BY p.name""",
                 params,
             )
         ]
@@ -248,12 +278,13 @@ class ReportService:
         if filters.get("movement_type"):
             where.append("m.movement_type = :movement_type")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT m.movement_date, p.name AS product, p.sku, m.movement_type,
                           m.qty_delta, m.qty_before, m.qty_after, m.unit_cost,
                           m.value_delta, m.reference_type, m.notes
                      FROM stock_movements m JOIN products p ON p.id=m.product_id
-                    WHERE {' AND '.join(where)} ORDER BY m.id DESC""",
+                    WHERE {" AND ".join(where)} ORDER BY m.id DESC""",
                 filters,
             )
         ]
@@ -261,21 +292,30 @@ class ReportService:
     def _valuation(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         return [
             {
-                "name": r["name"], "sku": r["sku"], "unit": r["unit_symbol"],
-                "stock_qty": r["stock_qty"], "avg_cost": r["avg_cost"], "stock_value": r["stock_value"],
+                "name": r["name"],
+                "sku": r["sku"],
+                "unit": r["unit_symbol"],
+                "stock_qty": r["stock_qty"],
+                "avg_cost": r["avg_cost"],
+                "stock_value": r["stock_value"],
             }
             for r in self.inventory.valuation_rows()
         ]
 
-    def _product_performance(self, filters: dict[str, Any], *, slow: bool = False,
-                             best: bool = False) -> list[dict[str, Any]]:
+    def _product_performance(
+        self, filters: dict[str, Any], *, slow: bool = False, best: bool = False
+    ) -> list[dict[str, Any]]:
         rows = self.finance.product_performance(
             filters["start"], filters["end"], limit=int(filters.get("limit", 100)), slow_moving=slow
         )
         return [
             {
-                "name": r["name"], "sku": r["sku"], "qty_sold": r["qty_sold"],
-                "revenue": r["revenue"], "cost": r["cost"], "profit": r["profit"],
+                "name": r["name"],
+                "sku": r["sku"],
+                "qty_sold": r["qty_sold"],
+                "revenue": r["revenue"],
+                "cost": r["cost"],
+                "profit": r["profit"],
             }
             for r in rows
         ]
@@ -285,7 +325,8 @@ class ReportService:
         if filters.get("due_only"):
             where.append("c.current_due > 0")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT c.name, c.phone, c.address, c.opening_due,
                           COALESCE((SELECT SUM(s.grand_total) FROM sales s
                                      WHERE s.customer_id=c.id AND s.status<>'cancelled'),0) AS total_purchase,
@@ -294,7 +335,7 @@ class ReportService:
                         + COALESCE((SELECT SUM(p.amount) FROM customer_payments p
                                      WHERE p.customer_id=c.id),0) AS total_paid,
                           c.current_due
-                     FROM customers c WHERE {' AND '.join(where)} ORDER BY c.current_due DESC, c.name""",
+                     FROM customers c WHERE {" AND ".join(where)} ORDER BY c.current_due DESC, c.name""",
                 (),
             )
         ]
@@ -304,7 +345,8 @@ class ReportService:
         if filters.get("customer_id"):
             where.append("cp.customer_id = :customer_id")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT cp.receipt_no, cp.payment_date, c.name AS customer,
                           COALESCE(s.invoice_no,'') AS invoice_no, pm.name AS method,
                           cp.reference, cp.amount
@@ -312,7 +354,7 @@ class ReportService:
                      JOIN customers c ON c.id=cp.customer_id
                      JOIN payment_methods pm ON pm.id=cp.payment_method_id
                      LEFT JOIN sales s ON s.id=cp.sale_id
-                    WHERE {' AND '.join(where)} ORDER BY cp.payment_date, cp.id""",
+                    WHERE {" AND ".join(where)} ORDER BY cp.payment_date, cp.id""",
                 filters,
             )
         ]
@@ -326,8 +368,12 @@ class ReportService:
         )
         return [
             {
-                "date": e["date"], "particulars": e["particulars"], "reference": e["reference"],
-                "debit": e["debit"], "credit": e["credit"], "balance": e["balance"],
+                "date": e["date"],
+                "particulars": e["particulars"],
+                "reference": e["reference"],
+                "debit": e["debit"],
+                "credit": e["credit"],
+                "balance": e["balance"],
             }
             for e in ledger["entries"]
         ]
@@ -337,7 +383,8 @@ class ReportService:
         if filters.get("payable_only"):
             where.append("s.current_payable > 0")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT s.name, s.business_name, s.phone, s.opening_payable,
                           COALESCE((SELECT SUM(p.grand_total) FROM purchases p
                                      WHERE p.supplier_id=s.id AND p.status<>'cancelled'),0) AS total_purchase,
@@ -346,7 +393,7 @@ class ReportService:
                         + COALESCE((SELECT SUM(p.amount) FROM supplier_payments p
                                      WHERE p.supplier_id=s.id),0) AS total_paid,
                           s.current_payable
-                     FROM suppliers s WHERE {' AND '.join(where)} ORDER BY s.current_payable DESC, s.name""",
+                     FROM suppliers s WHERE {" AND ".join(where)} ORDER BY s.current_payable DESC, s.name""",
                 (),
             )
         ]
@@ -356,7 +403,8 @@ class ReportService:
         if filters.get("supplier_id"):
             where.append("sp.supplier_id = :supplier_id")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT sp.receipt_no, sp.payment_date, s.name AS supplier,
                           COALESCE(p.invoice_no,'') AS invoice_no, pm.name AS method,
                           sp.reference, sp.amount
@@ -364,7 +412,7 @@ class ReportService:
                      JOIN suppliers s ON s.id=sp.supplier_id
                      JOIN payment_methods pm ON pm.id=sp.payment_method_id
                      LEFT JOIN purchases p ON p.id=sp.purchase_id
-                    WHERE {' AND '.join(where)} ORDER BY sp.payment_date, sp.id""",
+                    WHERE {" AND ".join(where)} ORDER BY sp.payment_date, sp.id""",
                 filters,
             )
         ]
@@ -378,15 +426,20 @@ class ReportService:
         )
         return [
             {
-                "date": e["date"], "particulars": e["particulars"], "reference": e["reference"],
-                "debit": e["debit"], "credit": e["credit"], "balance": e["balance"],
+                "date": e["date"],
+                "particulars": e["particulars"],
+                "reference": e["reference"],
+                "debit": e["debit"],
+                "credit": e["credit"],
+                "balance": e["balance"],
             }
             for e in ledger["entries"]
         ]
 
     def _sales_returns(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT r.return_no, r.return_date, s.invoice_no,
                           COALESCE(c.name,'ওয়াক-ইন') AS customer, r.total_amount,
                           r.refund_amount, r.due_adjusted, r.cost_reversed,
@@ -400,7 +453,8 @@ class ReportService:
 
     def _purchase_returns(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT r.return_no, r.return_date, p.invoice_no, s.name AS supplier,
                           r.total_amount, r.refund_amount, r.payable_adjusted, r.reason
                      FROM purchase_returns r JOIN purchases p ON p.id=r.purchase_id
@@ -412,7 +466,8 @@ class ReportService:
 
     def _payments(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT * FROM (
                       SELECT s.sale_date AS date, s.invoice_no AS document, 'সেলস পেমেন্ট' AS kind,
                              COALESCE(c.name,'ওয়াক-ইন') AS party, pm.name AS method, sp.amount
@@ -443,7 +498,8 @@ class ReportService:
 
     def _cash_register(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT date(cs.opened_at) AS date, cr.name AS register, cs.opened_at,
                           cs.closed_at, cs.opening_cash, COALESCE(cs.expected_cash,0) AS expected_cash,
                           COALESCE(cs.actual_cash,0) AS actual_cash, COALESCE(cs.difference,0) AS difference,
@@ -456,7 +512,8 @@ class ReportService:
 
     def _cash_in_out(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT date(cm.movement_at) AS date, cm.movement_type, cm.notes,
                           cm.reference_type, cm.amount, cm.session_id
                      FROM cash_movements cm
@@ -468,7 +525,8 @@ class ReportService:
 
     def _discount(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT s.invoice_no, s.sale_date, COALESCE(c.name,'ওয়াক-ইন') AS customer,
                           s.subtotal AS gross_sales, s.item_discount, s.invoice_discount,
                           s.item_discount + s.invoice_discount AS total_discount, s.grand_total
@@ -482,7 +540,8 @@ class ReportService:
 
     def _tax(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT s.invoice_no, s.sale_date, si.product_name, si.net_amount AS taxable_amount,
                           si.tax_bp, si.tax_amount
                      FROM sale_items si JOIN sales s ON s.id=si.sale_id
@@ -499,10 +558,11 @@ class ReportService:
         if filters.get("query"):
             where.append("(txn_no LIKE '%' || :query || '%' OR party_name LIKE '%' || :query || '%')")
         return [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 f"""SELECT txn_date, txn_type, txn_no, party_name, amount, paid_amount,
                           due_amount, payment_summary, status
-                     FROM transactions WHERE {' AND '.join(where)} ORDER BY id DESC""",
+                     FROM transactions WHERE {" AND ".join(where)} ORDER BY id DESC""",
                 filters,
             )
         ]
@@ -510,179 +570,436 @@ class ReportService:
     # -------------------------------------------------------------- registry
     def _build_registry(self) -> dict[str, ReportDefinition]:
         sales_period_cols = [
-            Column("period", "সময়কাল", "text"), _int("invoice_count", "ইনভয়েস সংখ্যা", True),
-            _money("gross_sales", "মোট সেলস"), _money("discount", "ডিস্কাউন্ট"),
-            _money("tax", "ট্যাক্স"), _money("net_total", "নেট টোটাল"),
-            _money("paid", "পরিশোধিত"), _money("due", "বাকি"),
-            _money("cost", "খরচ (COGS)"), _money("profit", "লাভ"),
+            Column("period", "সময়কাল", "text"),
+            _int("invoice_count", "ইনভয়েস সংখ্যা", True),
+            _money("gross_sales", "মোট সেলস"),
+            _money("discount", "ডিস্কাউন্ট"),
+            _money("tax", "ট্যাক্স"),
+            _money("net_total", "নেট টোটাল"),
+            _money("paid", "পরিশোধিত"),
+            _money("due", "বাকি"),
+            _money("cost", "খরচ (COGS)"),
+            _money("profit", "লাভ"),
         ]
         sales_detail_cols = [
-            Column("invoice_no", "ইনভয়েস নং"), Column("sale_date", "তারিখ", "date"),
-            Column("customer", "কাস্টমার"), _money("gross_sales", "মোট সেলস"),
-            _money("discount", "ডিস্কাউন্ট"), _money("tax", "ট্যাক্স"),
-            _money("net_total", "নেট টোটাল"), _money("paid", "পরিশোধিত"),
-            _money("due", "বাকি"), Column("status", "স্ট্যাটাস"),
+            Column("invoice_no", "ইনভয়েস নং"),
+            Column("sale_date", "তারিখ", "date"),
+            Column("customer", "কাস্টমার"),
+            _money("gross_sales", "মোট সেলস"),
+            _money("discount", "ডিস্কাউন্ট"),
+            _money("tax", "ট্যাক্স"),
+            _money("net_total", "নেট টোটাল"),
+            _money("paid", "পরিশোধিত"),
+            _money("due", "বাকি"),
+            Column("status", "স্ট্যাটাস"),
         ]
         pnl_cols = [Column("particulars", "বিবরণ"), _money("amount", "পরিমাণ", False)]
         party_cols = lambda party: [  # noqa: E731
-            Column("name", "নাম"), Column("phone", "মোবাইল"),
+            Column("name", "নাম"),
+            Column("phone", "মোবাইল"),
             _money("opening_due" if party == "customer" else "opening_payable", "ওপেনিং ব্যালেন্স"),
-            _money("total_purchase", "মোট ক্রয়"), _money("total_paid", "মোট পরিশোধ"),
-            _money("current_due" if party == "customer" else "current_payable",
-                   "বর্তমান বাকি" if party == "customer" else "বর্তমান দেয়"),
+            _money("total_purchase", "মোট ক্রয়"),
+            _money("total_paid", "মোট পরিশোধ"),
+            _money(
+                "current_due" if party == "customer" else "current_payable",
+                "বর্তমান বাকি" if party == "customer" else "বর্তমান দেয়",
+            ),
         ]
         ledger_cols = [
-            Column("date", "তারিখ", "date"), Column("particulars", "বিবরণ"),
-            Column("reference", "রেফারেন্স"), _money("debit", "ডেবিট"),
-            _money("credit", "ক্রেডিট"), _money("balance", "ব্যালেন্স", False),
+            Column("date", "তারিখ", "date"),
+            Column("particulars", "বিবরণ"),
+            Column("reference", "রেফারেন্স"),
+            _money("debit", "ডেবিট"),
+            _money("credit", "ক্রেডিট"),
+            _money("balance", "ব্যালেন্স", False),
         ]
         stock_cols = [
-            Column("name", "প্রোডাক্ট"), Column("sku", "এসকেইউ"), Column("category", "ক্যাটাগরি"),
-            Column("unit", "ইউনিট"), _qty("stock_qty", "মজুদ"), _qty("min_stock_qty", "মিনিমাম", False),
-            _money("avg_cost", "গড় খরচ", False), _money("stock_value", "স্টক মূল্য"),
+            Column("name", "প্রোডাক্ট"),
+            Column("sku", "এসকেইউ"),
+            Column("category", "ক্যাটাগরি"),
+            Column("unit", "ইউনিট"),
+            _qty("stock_qty", "মজুদ"),
+            _qty("min_stock_qty", "মিনিমাম", False),
+            _money("avg_cost", "গড় খরচ", False),
+            _money("stock_value", "স্টক মূল্য"),
             _money("selling_price", "বিক্রয় মূল্য", False),
         ]
         perf_cols = [
-            Column("name", "প্রোডাক্ট"), Column("sku", "এসকেইউ"), _qty("qty_sold", "বিক্রীত পরিমাণ"),
-            _money("revenue", "আয়"), _money("cost", "খরচ"), _money("profit", "লাভ"),
+            Column("name", "প্রোডাক্ট"),
+            Column("sku", "এসকেইউ"),
+            _qty("qty_sold", "বিক্রীত পরিমাণ"),
+            _money("revenue", "আয়"),
+            _money("cost", "খরচ"),
+            _money("profit", "লাভ"),
         ]
 
         definitions = [
-            ReportDefinition("daily_sales", "দৈনিক সেলস রিপোর্ট", "সেলস", sales_period_cols,
-                             lambda s, f: s._sales_period(f, "day")),
-            ReportDefinition("weekly_sales", "সাপ্তাহিক সেলস রিপোর্ট", "সেলস", sales_period_cols,
-                             lambda s, f: s._sales_period(f, "week")),
-            ReportDefinition("monthly_sales", "মাসিক সেলস রিপোর্ট", "সেলস", sales_period_cols,
-                             lambda s, f: s._sales_period(f, "month")),
-            ReportDefinition("yearly_sales", "বার্ষিক সেলস রিপোর্ট", "সেলস", sales_period_cols,
-                             lambda s, f: s._sales_period(f, "year")),
-            ReportDefinition("custom_sales", "কাস্টম রেঞ্জ সেলস রিপোর্ট", "সেলস", sales_detail_cols,
-                             lambda s, f: s._sales_detail(f),
-                             filters=("start", "end", "customer_id", "status")),
-            ReportDefinition("profit_loss", "প্রফিট / লস রিপোর্ট", "হিসাব", pnl_cols,
-                             lambda s, f: s._pnl_rows(f, "full")),
-            ReportDefinition("gross_profit", "গ্রস প্রফিট রিপোর্ট", "হিসাব", pnl_cols,
-                             lambda s, f: s._pnl_rows(f, "gross")),
-            ReportDefinition("net_profit", "নেট প্রফিট রিপোর্ট", "হিসাব", pnl_cols,
-                             lambda s, f: s._pnl_rows(f, "net")),
-            ReportDefinition("expense", "এক্সপেন্স রিপোর্ট", "হিসাব",
-                             [Column("voucher_no", "ভাউচার নং"), Column("expense_date", "তারিখ", "date"),
-                              Column("category", "ক্যাটাগরি"), Column("method", "পেমেন্ট মেথড"),
-                              Column("description", "বিবরণ"), _money("amount", "পরিমাণ")],
-                             lambda s, f: s._expense(f), filters=("start", "end", "category_id")),
-            ReportDefinition("purchase", "পারচেজ রিপোর্ট", "পারচেজ",
-                             [Column("invoice_no", "পারচেজ নং"), Column("purchase_date", "তারিখ", "date"),
-                              Column("supplier", "সাপ্লায়ার"), Column("supplier_invoice_no", "সাপ্লায়ার ইনভয়েস"),
-                              _money("gross_amount", "মোট"), _money("discount", "ডিস্কাউন্ট"),
-                              _money("net_total", "নেট টোটাল"), _money("paid", "পরিশোধিত"),
-                              _money("due", "বাকি"), Column("status", "স্ট্যাটাস")],
-                             lambda s, f: s._purchase(f), filters=("start", "end", "supplier_id")),
-            ReportDefinition("stock", "স্টক রিপোর্ট", "ইনভেন্টরি", stock_cols,
-                             lambda s, f: s._stock(f), filters=("category_id", "stock_filter")),
-            ReportDefinition("low_stock", "লো স্টক রিপোর্ট", "ইনভেন্টরি", stock_cols,
-                             lambda s, f: s._stock({**f, "stock_filter": "low"}),
-                             filters=("category_id",)),
-            ReportDefinition("out_of_stock", "স্টক আউট রিপোর্ট", "ইনভেন্টরি", stock_cols,
-                             lambda s, f: s._stock({**f, "stock_filter": "out"}),
-                             filters=("category_id",)),
-            ReportDefinition("stock_movement", "স্টক মুভমেন্ট রিপোর্ট", "ইনভেন্টরি",
-                             [Column("movement_date", "তারিখ", "date"), Column("product", "প্রোডাক্ট"),
-                              Column("sku", "এসকেইউ"), Column("movement_type", "ধরন"),
-                              _qty("qty_delta", "পরিমাণ পরিবর্তন"), _qty("qty_before", "পূর্বের মজুদ", False),
-                              _qty("qty_after", "পরবর্তী মজুদ", False), _money("unit_cost", "একক খরচ", False),
-                              _money("value_delta", "মূল্য পরিবর্তন"), Column("reference_type", "রেফারেন্স"),
-                              Column("notes", "নোট")],
-                             lambda s, f: s._stock_movement(f),
-                             filters=("start", "end", "product_id", "movement_type")),
-            ReportDefinition("inventory_valuation", "ইনভেন্টরি ভ্যালুয়েশন রিপোর্ট", "ইনভেন্টরি",
-                             [Column("name", "প্রোডাক্ট"), Column("sku", "এসকেইউ"), Column("unit", "ইউনিট"),
-                              _qty("stock_qty", "মজুদ"), _money("avg_cost", "গড় খরচ", False),
-                              _money("stock_value", "স্টক মূল্য")],
-                             lambda s, f: s._valuation(f), filters=()),
-            ReportDefinition("product_performance", "প্রোডাক্ট পারফরম্যান্স রিপোর্ট", "সেলস", perf_cols,
-                             lambda s, f: s._product_performance(f)),
-            ReportDefinition("best_selling", "বেস্ট সেলিং প্রোডাক্ট রিপোর্ট", "সেলস", perf_cols,
-                             lambda s, f: s._product_performance(f, best=True)),
-            ReportDefinition("slow_moving", "স্লো মুভিং প্রোডাক্ট রিপোর্ট", "সেলস", perf_cols,
-                             lambda s, f: s._product_performance(f, slow=True)),
-            ReportDefinition("customer", "কাস্টমার রিপোর্ট", "কাস্টমার", party_cols("customer"),
-                             lambda s, f: s._customers(f), filters=("due_only",)),
-            ReportDefinition("customer_due", "কাস্টমার ডিউ রিপোর্ট", "কাস্টমার", party_cols("customer"),
-                             lambda s, f: s._customers({**f, "due_only": True}), filters=()),
-            ReportDefinition("customer_payment", "কাস্টমার পেমেন্ট রিপোর্ট", "কাস্টমার",
-                             [Column("receipt_no", "রিসিট নং"), Column("payment_date", "তারিখ", "date"),
-                              Column("customer", "কাস্টমার"), Column("invoice_no", "ইনভয়েস"),
-                              Column("method", "পেমেন্ট মেথড"), Column("reference", "রেফারেন্স"),
-                              _money("amount", "পরিমাণ")],
-                             lambda s, f: s._customer_payments(f),
-                             filters=("start", "end", "customer_id")),
-            ReportDefinition("customer_ledger", "কাস্টমার লেজার", "কাস্টমার", ledger_cols,
-                             lambda s, f: s._customer_ledger(f),
-                             filters=("start", "end", "customer_id")),
-            ReportDefinition("supplier", "সাপ্লায়ার রিপোর্ট", "সাপ্লায়ার", party_cols("supplier"),
-                             lambda s, f: s._suppliers(f), filters=("payable_only",)),
-            ReportDefinition("supplier_payable", "সাপ্লায়ার পেয়েবল রিপোর্ট", "সাপ্লায়ার",
-                             party_cols("supplier"),
-                             lambda s, f: s._suppliers({**f, "payable_only": True}), filters=()),
-            ReportDefinition("supplier_payment", "সাপ্লায়ার পেমেন্ট রিপোর্ট", "সাপ্লায়ার",
-                             [Column("receipt_no", "রিসিট নং"), Column("payment_date", "তারিখ", "date"),
-                              Column("supplier", "সাপ্লায়ার"), Column("invoice_no", "পারচেজ নং"),
-                              Column("method", "পেমেন্ট মেথড"), Column("reference", "রেফারেন্স"),
-                              _money("amount", "পরিমাণ")],
-                             lambda s, f: s._supplier_payments(f),
-                             filters=("start", "end", "supplier_id")),
-            ReportDefinition("supplier_ledger", "সাপ্লায়ার লেজার", "সাপ্লায়ার", ledger_cols,
-                             lambda s, f: s._supplier_ledger(f),
-                             filters=("start", "end", "supplier_id")),
-            ReportDefinition("sales_return", "সেলস রিটার্ন রিপোর্ট", "রিটার্ন",
-                             [Column("return_no", "রিটার্ন নং"), Column("return_date", "তারিখ", "date"),
-                              Column("invoice_no", "ইনভয়েস"), Column("customer", "কাস্টমার"),
-                              _money("total_amount", "রিটার্ন মূল্য"), _money("refund_amount", "রিফান্ড"),
-                              _money("due_adjusted", "বাকি সমন্বয়"), _money("cost_reversed", "ফেরত খরচ"),
-                              _money("write_off_cost", "রাইট-অফ"), Column("reason", "কারণ")],
-                             lambda s, f: s._sales_returns(f)),
-            ReportDefinition("purchase_return", "পারচেজ রিটার্ন রিপোর্ট", "রিটার্ন",
-                             [Column("return_no", "রিটার্ন নং"), Column("return_date", "তারিখ", "date"),
-                              Column("invoice_no", "পারচেজ নং"), Column("supplier", "সাপ্লায়ার"),
-                              _money("total_amount", "রিটার্ন মূল্য"), _money("refund_amount", "রিফান্ড"),
-                              _money("payable_adjusted", "দেয় সমন্বয়"), Column("reason", "কারণ")],
-                             lambda s, f: s._purchase_returns(f)),
-            ReportDefinition("payment", "পেমেন্ট রিপোর্ট", "হিসাব",
-                             [Column("date", "তারিখ", "date"), Column("document", "ডকুমেন্ট"),
-                              Column("kind", "ধরন"), Column("party", "পার্টি"),
-                              Column("method", "পেমেন্ট মেথড"), _money("amount", "পরিমাণ")],
-                             lambda s, f: s._payments(f)),
-            ReportDefinition("cash_register", "ক্যাশ রেজিস্টার রিপোর্ট", "ক্যাশ",
-                             [Column("date", "তারিখ", "date"), Column("register", "রেজিস্টার"),
-                              Column("opened_at", "শুরু"), Column("closed_at", "শেষ"),
-                              _money("opening_cash", "ওপেনিং ক্যাশ"), _money("expected_cash", "প্রত্যাশিত"),
-                              _money("actual_cash", "প্রকৃত"), _money("difference", "পার্থক্য"),
-                              Column("status", "স্ট্যাটাস"), Column("opened_by", "দায়িত্বে")],
-                             lambda s, f: s._cash_register(f)),
-            ReportDefinition("cash_in_out", "ক্যাশ ইন / আউট রিপোর্ট", "ক্যাশ",
-                             [Column("date", "তারিখ", "date"), Column("movement_type", "ধরন"),
-                              Column("notes", "বিবরণ"), Column("reference_type", "রেফারেন্স"),
-                              _money("amount", "পরিমাণ"), _int("session_id", "শিফট", False)],
-                             lambda s, f: s._cash_in_out(f)),
-            ReportDefinition("discount", "ডিস্কাউন্ট রিপোর্ট", "সেলস",
-                             [Column("invoice_no", "ইনভয়েস"), Column("sale_date", "তারিখ", "date"),
-                              Column("customer", "কাস্টমার"), _money("gross_sales", "মোট সেলস"),
-                              _money("item_discount", "আইটেম ডিস্কাউন্ট"),
-                              _money("invoice_discount", "ইনভয়েস ডিস্কাউন্ট"),
-                              _money("total_discount", "মোট ডিস্কাউন্ট"), _money("grand_total", "নেট টোটাল")],
-                             lambda s, f: s._discount(f)),
-            ReportDefinition("tax", "ট্যাক্স রিপোর্ট", "হিসাব",
-                             [Column("invoice_no", "ইনভয়েস"), Column("sale_date", "তারিখ", "date"),
-                              Column("product_name", "প্রোডাক্ট"), _money("taxable_amount", "ট্যাক্সযোগ্য"),
-                              _int("tax_bp", "হার (bp)"), _money("tax_amount", "ট্যাক্স")],
-                             lambda s, f: s._tax(f)),
-            ReportDefinition("transaction_history", "ট্রানজেকশন হিস্ট্রি রিপোর্ট", "হিসাব",
-                             [Column("txn_date", "তারিখ", "date"), Column("txn_type", "ধরন"),
-                              Column("txn_no", "ডকুমেন্ট নং"), Column("party_name", "পার্টি"),
-                              _money("amount", "পরিমাণ"), _money("paid_amount", "পরিশোধিত"),
-                              _money("due_amount", "বাকি"), Column("payment_summary", "মেথড"),
-                              Column("status", "স্ট্যাটাস")],
-                             lambda s, f: s._transactions(f),
-                             filters=("start", "end", "txn_type", "query")),
+            ReportDefinition(
+                "daily_sales",
+                "দৈনিক সেলস রিপোর্ট",
+                "সেলস",
+                sales_period_cols,
+                lambda s, f: s._sales_period(f, "day"),
+            ),
+            ReportDefinition(
+                "weekly_sales",
+                "সাপ্তাহিক সেলস রিপোর্ট",
+                "সেলস",
+                sales_period_cols,
+                lambda s, f: s._sales_period(f, "week"),
+            ),
+            ReportDefinition(
+                "monthly_sales",
+                "মাসিক সেলস রিপোর্ট",
+                "সেলস",
+                sales_period_cols,
+                lambda s, f: s._sales_period(f, "month"),
+            ),
+            ReportDefinition(
+                "yearly_sales",
+                "বার্ষিক সেলস রিপোর্ট",
+                "সেলস",
+                sales_period_cols,
+                lambda s, f: s._sales_period(f, "year"),
+            ),
+            ReportDefinition(
+                "custom_sales",
+                "কাস্টম রেঞ্জ সেলস রিপোর্ট",
+                "সেলস",
+                sales_detail_cols,
+                lambda s, f: s._sales_detail(f),
+                filters=("start", "end", "customer_id", "status"),
+            ),
+            ReportDefinition(
+                "profit_loss", "প্রফিট / লস রিপোর্ট", "হিসাব", pnl_cols, lambda s, f: s._pnl_rows(f, "full")
+            ),
+            ReportDefinition(
+                "gross_profit", "গ্রস প্রফিট রিপোর্ট", "হিসাব", pnl_cols, lambda s, f: s._pnl_rows(f, "gross")
+            ),
+            ReportDefinition(
+                "net_profit", "নেট প্রফিট রিপোর্ট", "হিসাব", pnl_cols, lambda s, f: s._pnl_rows(f, "net")
+            ),
+            ReportDefinition(
+                "expense",
+                "এক্সপেন্স রিপোর্ট",
+                "হিসাব",
+                [
+                    Column("voucher_no", "ভাউচার নং"),
+                    Column("expense_date", "তারিখ", "date"),
+                    Column("category", "ক্যাটাগরি"),
+                    Column("method", "পেমেন্ট মেথড"),
+                    Column("description", "বিবরণ"),
+                    _money("amount", "পরিমাণ"),
+                ],
+                lambda s, f: s._expense(f),
+                filters=("start", "end", "category_id"),
+            ),
+            ReportDefinition(
+                "purchase",
+                "পারচেজ রিপোর্ট",
+                "পারচেজ",
+                [
+                    Column("invoice_no", "পারচেজ নং"),
+                    Column("purchase_date", "তারিখ", "date"),
+                    Column("supplier", "সাপ্লায়ার"),
+                    Column("supplier_invoice_no", "সাপ্লায়ার ইনভয়েস"),
+                    _money("gross_amount", "মোট"),
+                    _money("discount", "ডিস্কাউন্ট"),
+                    _money("net_total", "নেট টোটাল"),
+                    _money("paid", "পরিশোধিত"),
+                    _money("due", "বাকি"),
+                    Column("status", "স্ট্যাটাস"),
+                ],
+                lambda s, f: s._purchase(f),
+                filters=("start", "end", "supplier_id"),
+            ),
+            ReportDefinition(
+                "stock",
+                "স্টক রিপোর্ট",
+                "ইনভেন্টরি",
+                stock_cols,
+                lambda s, f: s._stock(f),
+                filters=("category_id", "stock_filter"),
+            ),
+            ReportDefinition(
+                "low_stock",
+                "লো স্টক রিপোর্ট",
+                "ইনভেন্টরি",
+                stock_cols,
+                lambda s, f: s._stock({**f, "stock_filter": "low"}),
+                filters=("category_id",),
+            ),
+            ReportDefinition(
+                "out_of_stock",
+                "স্টক আউট রিপোর্ট",
+                "ইনভেন্টরি",
+                stock_cols,
+                lambda s, f: s._stock({**f, "stock_filter": "out"}),
+                filters=("category_id",),
+            ),
+            ReportDefinition(
+                "stock_movement",
+                "স্টক মুভমেন্ট রিপোর্ট",
+                "ইনভেন্টরি",
+                [
+                    Column("movement_date", "তারিখ", "date"),
+                    Column("product", "প্রোডাক্ট"),
+                    Column("sku", "এসকেইউ"),
+                    Column("movement_type", "ধরন"),
+                    _qty("qty_delta", "পরিমাণ পরিবর্তন"),
+                    _qty("qty_before", "পূর্বের মজুদ", False),
+                    _qty("qty_after", "পরবর্তী মজুদ", False),
+                    _money("unit_cost", "একক খরচ", False),
+                    _money("value_delta", "মূল্য পরিবর্তন"),
+                    Column("reference_type", "রেফারেন্স"),
+                    Column("notes", "নোট"),
+                ],
+                lambda s, f: s._stock_movement(f),
+                filters=("start", "end", "product_id", "movement_type"),
+            ),
+            ReportDefinition(
+                "inventory_valuation",
+                "ইনভেন্টরি ভ্যালুয়েশন রিপোর্ট",
+                "ইনভেন্টরি",
+                [
+                    Column("name", "প্রোডাক্ট"),
+                    Column("sku", "এসকেইউ"),
+                    Column("unit", "ইউনিট"),
+                    _qty("stock_qty", "মজুদ"),
+                    _money("avg_cost", "গড় খরচ", False),
+                    _money("stock_value", "স্টক মূল্য"),
+                ],
+                lambda s, f: s._valuation(f),
+                filters=(),
+            ),
+            ReportDefinition(
+                "product_performance",
+                "প্রোডাক্ট পারফরম্যান্স রিপোর্ট",
+                "সেলস",
+                perf_cols,
+                lambda s, f: s._product_performance(f),
+            ),
+            ReportDefinition(
+                "best_selling",
+                "বেস্ট সেলিং প্রোডাক্ট রিপোর্ট",
+                "সেলস",
+                perf_cols,
+                lambda s, f: s._product_performance(f, best=True),
+            ),
+            ReportDefinition(
+                "slow_moving",
+                "স্লো মুভিং প্রোডাক্ট রিপোর্ট",
+                "সেলস",
+                perf_cols,
+                lambda s, f: s._product_performance(f, slow=True),
+            ),
+            ReportDefinition(
+                "customer",
+                "কাস্টমার রিপোর্ট",
+                "কাস্টমার",
+                party_cols("customer"),
+                lambda s, f: s._customers(f),
+                filters=("due_only",),
+            ),
+            ReportDefinition(
+                "customer_due",
+                "কাস্টমার ডিউ রিপোর্ট",
+                "কাস্টমার",
+                party_cols("customer"),
+                lambda s, f: s._customers({**f, "due_only": True}),
+                filters=(),
+            ),
+            ReportDefinition(
+                "customer_payment",
+                "কাস্টমার পেমেন্ট রিপোর্ট",
+                "কাস্টমার",
+                [
+                    Column("receipt_no", "রিসিট নং"),
+                    Column("payment_date", "তারিখ", "date"),
+                    Column("customer", "কাস্টমার"),
+                    Column("invoice_no", "ইনভয়েস"),
+                    Column("method", "পেমেন্ট মেথড"),
+                    Column("reference", "রেফারেন্স"),
+                    _money("amount", "পরিমাণ"),
+                ],
+                lambda s, f: s._customer_payments(f),
+                filters=("start", "end", "customer_id"),
+            ),
+            ReportDefinition(
+                "customer_ledger",
+                "কাস্টমার লেজার",
+                "কাস্টমার",
+                ledger_cols,
+                lambda s, f: s._customer_ledger(f),
+                filters=("start", "end", "customer_id"),
+            ),
+            ReportDefinition(
+                "supplier",
+                "সাপ্লায়ার রিপোর্ট",
+                "সাপ্লায়ার",
+                party_cols("supplier"),
+                lambda s, f: s._suppliers(f),
+                filters=("payable_only",),
+            ),
+            ReportDefinition(
+                "supplier_payable",
+                "সাপ্লায়ার পেয়েবল রিপোর্ট",
+                "সাপ্লায়ার",
+                party_cols("supplier"),
+                lambda s, f: s._suppliers({**f, "payable_only": True}),
+                filters=(),
+            ),
+            ReportDefinition(
+                "supplier_payment",
+                "সাপ্লায়ার পেমেন্ট রিপোর্ট",
+                "সাপ্লায়ার",
+                [
+                    Column("receipt_no", "রিসিট নং"),
+                    Column("payment_date", "তারিখ", "date"),
+                    Column("supplier", "সাপ্লায়ার"),
+                    Column("invoice_no", "পারচেজ নং"),
+                    Column("method", "পেমেন্ট মেথড"),
+                    Column("reference", "রেফারেন্স"),
+                    _money("amount", "পরিমাণ"),
+                ],
+                lambda s, f: s._supplier_payments(f),
+                filters=("start", "end", "supplier_id"),
+            ),
+            ReportDefinition(
+                "supplier_ledger",
+                "সাপ্লায়ার লেজার",
+                "সাপ্লায়ার",
+                ledger_cols,
+                lambda s, f: s._supplier_ledger(f),
+                filters=("start", "end", "supplier_id"),
+            ),
+            ReportDefinition(
+                "sales_return",
+                "সেলস রিটার্ন রিপোর্ট",
+                "রিটার্ন",
+                [
+                    Column("return_no", "রিটার্ন নং"),
+                    Column("return_date", "তারিখ", "date"),
+                    Column("invoice_no", "ইনভয়েস"),
+                    Column("customer", "কাস্টমার"),
+                    _money("total_amount", "রিটার্ন মূল্য"),
+                    _money("refund_amount", "রিফান্ড"),
+                    _money("due_adjusted", "বাকি সমন্বয়"),
+                    _money("cost_reversed", "ফেরত খরচ"),
+                    _money("write_off_cost", "রাইট-অফ"),
+                    Column("reason", "কারণ"),
+                ],
+                lambda s, f: s._sales_returns(f),
+            ),
+            ReportDefinition(
+                "purchase_return",
+                "পারচেজ রিটার্ন রিপোর্ট",
+                "রিটার্ন",
+                [
+                    Column("return_no", "রিটার্ন নং"),
+                    Column("return_date", "তারিখ", "date"),
+                    Column("invoice_no", "পারচেজ নং"),
+                    Column("supplier", "সাপ্লায়ার"),
+                    _money("total_amount", "রিটার্ন মূল্য"),
+                    _money("refund_amount", "রিফান্ড"),
+                    _money("payable_adjusted", "দেয় সমন্বয়"),
+                    Column("reason", "কারণ"),
+                ],
+                lambda s, f: s._purchase_returns(f),
+            ),
+            ReportDefinition(
+                "payment",
+                "পেমেন্ট রিপোর্ট",
+                "হিসাব",
+                [
+                    Column("date", "তারিখ", "date"),
+                    Column("document", "ডকুমেন্ট"),
+                    Column("kind", "ধরন"),
+                    Column("party", "পার্টি"),
+                    Column("method", "পেমেন্ট মেথড"),
+                    _money("amount", "পরিমাণ"),
+                ],
+                lambda s, f: s._payments(f),
+            ),
+            ReportDefinition(
+                "cash_register",
+                "ক্যাশ রেজিস্টার রিপোর্ট",
+                "ক্যাশ",
+                [
+                    Column("date", "তারিখ", "date"),
+                    Column("register", "রেজিস্টার"),
+                    Column("opened_at", "শুরু"),
+                    Column("closed_at", "শেষ"),
+                    _money("opening_cash", "ওপেনিং ক্যাশ"),
+                    _money("expected_cash", "প্রত্যাশিত"),
+                    _money("actual_cash", "প্রকৃত"),
+                    _money("difference", "পার্থক্য"),
+                    Column("status", "স্ট্যাটাস"),
+                    Column("opened_by", "দায়িত্বে"),
+                ],
+                lambda s, f: s._cash_register(f),
+            ),
+            ReportDefinition(
+                "cash_in_out",
+                "ক্যাশ ইন / আউট রিপোর্ট",
+                "ক্যাশ",
+                [
+                    Column("date", "তারিখ", "date"),
+                    Column("movement_type", "ধরন"),
+                    Column("notes", "বিবরণ"),
+                    Column("reference_type", "রেফারেন্স"),
+                    _money("amount", "পরিমাণ"),
+                    _int("session_id", "শিফট", False),
+                ],
+                lambda s, f: s._cash_in_out(f),
+            ),
+            ReportDefinition(
+                "discount",
+                "ডিস্কাউন্ট রিপোর্ট",
+                "সেলস",
+                [
+                    Column("invoice_no", "ইনভয়েস"),
+                    Column("sale_date", "তারিখ", "date"),
+                    Column("customer", "কাস্টমার"),
+                    _money("gross_sales", "মোট সেলস"),
+                    _money("item_discount", "আইটেম ডিস্কাউন্ট"),
+                    _money("invoice_discount", "ইনভয়েস ডিস্কাউন্ট"),
+                    _money("total_discount", "মোট ডিস্কাউন্ট"),
+                    _money("grand_total", "নেট টোটাল"),
+                ],
+                lambda s, f: s._discount(f),
+            ),
+            ReportDefinition(
+                "tax",
+                "ট্যাক্স রিপোর্ট",
+                "হিসাব",
+                [
+                    Column("invoice_no", "ইনভয়েস"),
+                    Column("sale_date", "তারিখ", "date"),
+                    Column("product_name", "প্রোডাক্ট"),
+                    _money("taxable_amount", "ট্যাক্সযোগ্য"),
+                    _int("tax_bp", "হার (bp)"),
+                    _money("tax_amount", "ট্যাক্স"),
+                ],
+                lambda s, f: s._tax(f),
+            ),
+            ReportDefinition(
+                "transaction_history",
+                "ট্রানজেকশন হিস্ট্রি রিপোর্ট",
+                "হিসাব",
+                [
+                    Column("txn_date", "তারিখ", "date"),
+                    Column("txn_type", "ধরন"),
+                    Column("txn_no", "ডকুমেন্ট নং"),
+                    Column("party_name", "পার্টি"),
+                    _money("amount", "পরিমাণ"),
+                    _money("paid_amount", "পরিশোধিত"),
+                    _money("due_amount", "বাকি"),
+                    Column("payment_summary", "মেথড"),
+                    Column("status", "স্ট্যাটাস"),
+                ],
+                lambda s, f: s._transactions(f),
+                filters=("start", "end", "txn_type", "query"),
+            ),
         ]
         return {d.id: d for d in definitions}

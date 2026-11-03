@@ -115,7 +115,9 @@ class TestDiscounts:
             )
         )
         items = db.query("SELECT * FROM sale_items WHERE sale_id=?", (result["id"],))
-        assert sum(int(i["invoice_discount_allocated"]) for i in items) == result["totals"]["invoice_discount"]
+        assert (
+            sum(int(i["invoice_discount_allocated"]) for i in items) == result["totals"]["invoice_discount"]
+        )
         assert sum(int(i["net_amount"]) for i in items) == result["totals"]["net_sales"]
 
     def test_discount_over_100_percent_rejected(self, sales, products, unit_id, cash_method_id):
@@ -166,7 +168,9 @@ class TestTax:
 
 
 class TestPaymentsAndDue:
-    def test_partial_payment_creates_due(self, sales, products, customers, unit_id, cash_method_id, open_shift, db):
+    def test_partial_payment_creates_due(
+        self, sales, products, customers, unit_id, cash_method_id, open_shift, db
+    ):
         pid = product(products, unit_id, selling_price=10_000)
         cid = customers.create(CustomerInput(name="রহিম"))
         result = sales.create(
@@ -179,7 +183,9 @@ class TestPaymentsAndDue:
         assert result["due_amount"] == 15_000
         assert customers.get(cid)["current_due"] == 15_000
 
-    def test_credit_sale_without_customer_rejected(self, sales, products, unit_id, cash_method_id, open_shift):
+    def test_credit_sale_without_customer_rejected(
+        self, sales, products, unit_id, cash_method_id, open_shift
+    ):
         pid = product(products, unit_id)
         with pytest.raises(ValidationError, match="কাস্টমার"):
             sales.create(SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[]))
@@ -207,7 +213,9 @@ class TestPaymentsAndDue:
     def test_zero_amount_payment_rejected(self, sales, products, unit_id, cash_method_id, open_shift):
         pid = product(products, unit_id)
         with pytest.raises(ValidationError):
-            sales.create(SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 0)]))
+            sales.create(
+                SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 0)])
+            )
 
     def test_only_cash_enters_drawer(self, sales, products, unit_id, cash_method_id, open_shift, cash, db):
         pid = product(products, unit_id, selling_price=10_000)
@@ -224,7 +232,9 @@ class TestPaymentsAndDue:
     def test_cash_requires_open_shift(self, sales, products, unit_id, cash_method_id):
         pid = product(products, unit_id)
         with pytest.raises(BusinessRuleError, match="শিফট"):
-            sales.create(SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 10_000)]))
+            sales.create(
+                SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 10_000)])
+            )
 
 
 class TestAtomicity:
@@ -252,11 +262,15 @@ class TestAtomicity:
         assert cash.expected_cash(open_shift["id"]) == before_cash
         assert inventory.reconcile() == []
 
-    def test_invoice_numbers_unique_and_sequential(self, sales, products, unit_id, cash_method_id, open_shift, db):
+    def test_invoice_numbers_unique_and_sequential(
+        self, sales, products, unit_id, cash_method_id, open_shift, db
+    ):
         pid = product(products, unit_id, selling_price=1_000)
         numbers = []
         for _ in range(15):
-            r = sales.create(SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 1_000)]))
+            r = sales.create(
+                SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 1_000)])
+            )
             numbers.append(r["invoice_no"])
         assert len(set(numbers)) == 15
         assert numbers[0].endswith("00001")
@@ -266,7 +280,9 @@ class TestAtomicity:
         pid = product(products, unit_id)
         products.set_status(pid, "archived")
         with pytest.raises(BusinessRuleError):
-            sales.create(SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 1_000)]))
+            sales.create(
+                SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 1_000)])
+            )
 
 
 class TestCancellation:
@@ -296,14 +312,18 @@ class TestCancellation:
 
     def test_cancel_twice_rejected(self, sales, products, unit_id, cash_method_id, open_shift):
         pid = product(products, unit_id, selling_price=1_000)
-        r = sales.create(SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 1_000)]))
+        r = sales.create(
+            SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 1_000)])
+        )
         sales.cancel(r["id"], reason="x")
         with pytest.raises(BusinessRuleError):
             sales.cancel(r["id"], reason="x")
 
 
 class TestReconciliation:
-    def test_payments_plus_due_equals_total(self, sales, products, customers, unit_id, cash_method_id, open_shift, db):
+    def test_payments_plus_due_equals_total(
+        self, sales, products, customers, unit_id, cash_method_id, open_shift, db
+    ):
         pid = product(products, unit_id, selling_price=7_777)
         cid = customers.create(CustomerInput(name="হিসাব"))
         for qty in (1_000, 2_500, 3_333):
@@ -340,8 +360,12 @@ class TestReconciliation:
         pid = product(products, unit_id, selling_price=1_000)
         cid = customers.create(CustomerInput(name="সার্চ কাস্টমার"))
         r = sales.create(
-            SaleInput(lines=[SaleLineInput(pid, 1_000)], payments=[PaymentInput(cash_method_id, 1_000)],
-                      customer_id=cid, sale_date="2026-03-15")
+            SaleInput(
+                lines=[SaleLineInput(pid, 1_000)],
+                payments=[PaymentInput(cash_method_id, 1_000)],
+                customer_id=cid,
+                sale_date="2026-03-15",
+            )
         )
         assert sales.search(start="2026-03-01", end="2026-03-31")["total"] == 1
         assert sales.search(start="2026-04-01")["total"] == 0

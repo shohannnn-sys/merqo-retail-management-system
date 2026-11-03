@@ -16,8 +16,12 @@ from .settings import SettingsService
 
 class CustomerPaymentService:
     def __init__(
-        self, db: Database, *, settings: SettingsService | None = None,
-        audit: AuditService | None = None, numbering: NumberingService | None = None,
+        self,
+        db: Database,
+        *,
+        settings: SettingsService | None = None,
+        audit: AuditService | None = None,
+        numbering: NumberingService | None = None,
         cash: CashService | None = None,
     ) -> None:
         self.db = db
@@ -27,20 +31,22 @@ class CustomerPaymentService:
         self.cash = cash or CashService(db, self.settings, self.audit)
 
     def invoice_outstanding(self, sale_id: int) -> int:
-        row = self.db.query_one(
-            "SELECT grand_total, paid_amount, status FROM sales WHERE id=?", (sale_id,)
-        )
+        row = self.db.query_one("SELECT grand_total, paid_amount, status FROM sales WHERE id=?", (sale_id,))
         if row is None:
             raise NotFoundError("ইনভয়েস খুঁজে পাওয়া যায়নি")
         if row["status"] == "cancelled":
             return 0
-        allocated = int(self.db.scalar(
-            "SELECT COALESCE(SUM(amount),0) FROM customer_payment_allocations WHERE sale_id=?",
-            (sale_id,),
-        ))
-        returned = int(self.db.scalar(
-            "SELECT COALESCE(SUM(due_adjusted),0) FROM sales_returns WHERE sale_id=?", (sale_id,)
-        ))
+        allocated = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(amount),0) FROM customer_payment_allocations WHERE sale_id=?",
+                (sale_id,),
+            )
+        )
+        returned = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(due_adjusted),0) FROM sales_returns WHERE sale_id=?", (sale_id,)
+            )
+        )
         return max(0, int(row["grand_total"]) - int(row["paid_amount"]) - allocated - returned)
 
     def due_invoices(self, customer_id: int) -> list[dict[str, Any]]:
@@ -58,9 +64,16 @@ class CustomerPaymentService:
         return result
 
     def collect(
-        self, *, customer_id: int, amount: int, method_id: int,
-        sale_id: int | None = None, payment_date: str | date | None = None,
-        reference: str = "", notes: str = "", allow_advance: bool = True,
+        self,
+        *,
+        customer_id: int,
+        amount: int,
+        method_id: int,
+        sale_id: int | None = None,
+        payment_date: str | date | None = None,
+        reference: str = "",
+        notes: str = "",
+        allow_advance: bool = True,
     ) -> dict[str, Any]:
         require_id(customer_id, "কাস্টমার")
         require_id(method_id, "পেমেন্ট মেথড")
@@ -69,17 +82,13 @@ class CustomerPaymentService:
         customer = self.db.query_one("SELECT * FROM customers WHERE id=?", (customer_id,))
         if customer is None:
             raise NotFoundError("কাস্টমার খুঁজে পাওয়া যায়নি")
-        method = self.db.query_one(
-            "SELECT * FROM payment_methods WHERE id=? AND is_active=1", (method_id,)
-        )
+        method = self.db.query_one("SELECT * FROM payment_methods WHERE id=? AND is_active=1", (method_id,))
         if method is None:
             raise NotFoundError("পেমেন্ট মেথড খুঁজে পাওয়া যায়নি")
         day = validate_date(payment_date or date.today(), "পেমেন্টের তারিখ")
 
         if sale_id is not None:
-            sale = self.db.query_one(
-                "SELECT id, customer_id, invoice_no FROM sales WHERE id=?", (sale_id,)
-            )
+            sale = self.db.query_one("SELECT id, customer_id, invoice_no FROM sales WHERE id=?", (sale_id,))
             if sale is None:
                 raise NotFoundError("ইনভয়েস খুঁজে পাওয়া যায়নি")
             if sale["customer_id"] != customer_id:
@@ -104,9 +113,15 @@ class CustomerPaymentService:
                     payment_date, reference, notes, cash_session_id)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    receipt_no, customer_id, sale_id, method_id, amount,
-                    datetime.now().isoformat(timespec="seconds"), day,
-                    optional_text(reference, max_length=120), optional_text(notes, max_length=300),
+                    receipt_no,
+                    customer_id,
+                    sale_id,
+                    method_id,
+                    amount,
+                    datetime.now().isoformat(timespec="seconds"),
+                    day,
+                    optional_text(reference, max_length=120),
+                    optional_text(notes, max_length=300),
                     session_id,
                 ),
             )
@@ -120,9 +135,13 @@ class CustomerPaymentService:
             )
             if method["is_cash"] and session_id is not None:
                 self.cash.record_movement(
-                    session_id=session_id, movement_type="customer_payment", amount=amount,
-                    payment_method_id=method_id, reference_type="customer_payment",
-                    reference_id=payment_id, notes=receipt_no,
+                    session_id=session_id,
+                    movement_type="customer_payment",
+                    amount=amount,
+                    payment_method_id=method_id,
+                    reference_type="customer_payment",
+                    reference_id=payment_id,
+                    notes=receipt_no,
                 )
             self.db.execute(
                 """INSERT INTO transactions
@@ -130,25 +149,42 @@ class CustomerPaymentService:
                     paid_amount, due_amount, payment_summary, reference_type, reference_id, notes)
                    VALUES ('customer_payment', ?, ?, 'customer', ?, ?, ?, ?, 0, ?, 'customer_payment', ?, ?)""",
                 (
-                    receipt_no, day, customer_id, customer["name"], amount, amount,
-                    method["name"], payment_id, optional_text(notes, max_length=300),
+                    receipt_no,
+                    day,
+                    customer_id,
+                    customer["name"],
+                    amount,
+                    amount,
+                    method["name"],
+                    payment_id,
+                    optional_text(notes, max_length=300),
                 ),
             )
             self.audit.log(
-                "customer_payment", payment_id, "create",
+                "customer_payment",
+                payment_id,
+                "create",
                 f"কালেকশন {receipt_no} — {customer['name']} {amount}",
                 after={"amount": amount, "allocated": allocation},
             )
         new_due = int(self.db.scalar("SELECT current_due FROM customers WHERE id=?", (customer_id,)))
         return {
-            "id": payment_id, "receipt_no": receipt_no, "amount": amount,
-            "allocated": allocation, "current_due": new_due,
+            "id": payment_id,
+            "receipt_no": receipt_no,
+            "amount": amount,
+            "allocated": allocation,
+            "current_due": new_due,
             "advance": max(0, -new_due),
         }
 
     def history(
-        self, *, customer_id: int | None = None, start: str | None = None,
-        end: str | None = None, limit: int = 100, offset: int = 0,
+        self,
+        *,
+        customer_id: int | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         where = ["1=1"]
         params: list[Any] = []
@@ -177,8 +213,12 @@ class CustomerPaymentService:
 
 class SupplierPaymentService:
     def __init__(
-        self, db: Database, *, settings: SettingsService | None = None,
-        audit: AuditService | None = None, numbering: NumberingService | None = None,
+        self,
+        db: Database,
+        *,
+        settings: SettingsService | None = None,
+        audit: AuditService | None = None,
+        numbering: NumberingService | None = None,
         cash: CashService | None = None,
     ) -> None:
         self.db = db
@@ -195,14 +235,18 @@ class SupplierPaymentService:
             raise NotFoundError("পারচেজ খুঁজে পাওয়া যায়নি")
         if row["status"] == "cancelled":
             return 0
-        allocated = int(self.db.scalar(
-            "SELECT COALESCE(SUM(amount),0) FROM supplier_payment_allocations WHERE purchase_id=?",
-            (purchase_id,),
-        ))
-        returned = int(self.db.scalar(
-            "SELECT COALESCE(SUM(payable_adjusted),0) FROM purchase_returns WHERE purchase_id=?",
-            (purchase_id,),
-        ))
+        allocated = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(amount),0) FROM supplier_payment_allocations WHERE purchase_id=?",
+                (purchase_id,),
+            )
+        )
+        returned = int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(payable_adjusted),0) FROM purchase_returns WHERE purchase_id=?",
+                (purchase_id,),
+            )
+        )
         return max(0, int(row["grand_total"]) - int(row["paid_amount"]) - allocated - returned)
 
     def due_purchases(self, supplier_id: int) -> list[dict[str, Any]]:
@@ -220,9 +264,15 @@ class SupplierPaymentService:
         return result
 
     def pay(
-        self, *, supplier_id: int, amount: int, method_id: int,
-        purchase_id: int | None = None, payment_date: str | date | None = None,
-        reference: str = "", notes: str = "",
+        self,
+        *,
+        supplier_id: int,
+        amount: int,
+        method_id: int,
+        purchase_id: int | None = None,
+        payment_date: str | date | None = None,
+        reference: str = "",
+        notes: str = "",
     ) -> dict[str, Any]:
         require_id(supplier_id, "সাপ্লায়ার")
         require_id(method_id, "পেমেন্ট মেথড")
@@ -231,17 +281,13 @@ class SupplierPaymentService:
         supplier = self.db.query_one("SELECT * FROM suppliers WHERE id=?", (supplier_id,))
         if supplier is None:
             raise NotFoundError("সাপ্লায়ার খুঁজে পাওয়া যায়নি")
-        method = self.db.query_one(
-            "SELECT * FROM payment_methods WHERE id=? AND is_active=1", (method_id,)
-        )
+        method = self.db.query_one("SELECT * FROM payment_methods WHERE id=? AND is_active=1", (method_id,))
         if method is None:
             raise NotFoundError("পেমেন্ট মেথড খুঁজে পাওয়া যায়নি")
         day = validate_date(payment_date or date.today(), "পেমেন্টের তারিখ")
         outstanding = 0
         if purchase_id is not None:
-            purchase = self.db.query_one(
-                "SELECT id, supplier_id FROM purchases WHERE id=?", (purchase_id,)
-            )
+            purchase = self.db.query_one("SELECT id, supplier_id FROM purchases WHERE id=?", (purchase_id,))
             if purchase is None:
                 raise NotFoundError("পারচেজ খুঁজে পাওয়া যায়নি")
             if purchase["supplier_id"] != supplier_id:
@@ -258,9 +304,15 @@ class SupplierPaymentService:
                     payment_date, reference, notes, cash_session_id)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    receipt_no, supplier_id, purchase_id, method_id, amount,
-                    datetime.now().isoformat(timespec="seconds"), day,
-                    optional_text(reference, max_length=120), optional_text(notes, max_length=300),
+                    receipt_no,
+                    supplier_id,
+                    purchase_id,
+                    method_id,
+                    amount,
+                    datetime.now().isoformat(timespec="seconds"),
+                    day,
+                    optional_text(reference, max_length=120),
+                    optional_text(notes, max_length=300),
                     session_id,
                 ),
             )
@@ -275,9 +327,13 @@ class SupplierPaymentService:
             )
             if method["is_cash"] and session_id is not None:
                 self.cash.record_movement(
-                    session_id=session_id, movement_type="supplier_payment", amount=-amount,
-                    payment_method_id=method_id, reference_type="supplier_payment",
-                    reference_id=payment_id, notes=receipt_no,
+                    session_id=session_id,
+                    movement_type="supplier_payment",
+                    amount=-amount,
+                    payment_method_id=method_id,
+                    reference_type="supplier_payment",
+                    reference_id=payment_id,
+                    notes=receipt_no,
                 )
             self.db.execute(
                 """INSERT INTO transactions
@@ -285,23 +341,40 @@ class SupplierPaymentService:
                     paid_amount, due_amount, payment_summary, reference_type, reference_id, notes)
                    VALUES ('supplier_payment', ?, ?, 'supplier', ?, ?, ?, ?, 0, ?, 'supplier_payment', ?, ?)""",
                 (
-                    receipt_no, day, supplier_id, supplier["name"], amount, amount,
-                    method["name"], payment_id, optional_text(notes, max_length=300),
+                    receipt_no,
+                    day,
+                    supplier_id,
+                    supplier["name"],
+                    amount,
+                    amount,
+                    method["name"],
+                    payment_id,
+                    optional_text(notes, max_length=300),
                 ),
             )
             self.audit.log(
-                "supplier_payment", payment_id, "create",
+                "supplier_payment",
+                payment_id,
+                "create",
                 f"সাপ্লায়ার পেমেন্ট {receipt_no} — {supplier['name']} {amount}",
             )
         new_payable = int(self.db.scalar("SELECT current_payable FROM suppliers WHERE id=?", (supplier_id,)))
         return {
-            "id": payment_id, "receipt_no": receipt_no, "amount": amount,
-            "allocated": allocation, "current_payable": new_payable,
+            "id": payment_id,
+            "receipt_no": receipt_no,
+            "amount": amount,
+            "allocated": allocation,
+            "current_payable": new_payable,
         }
 
     def history(
-        self, *, supplier_id: int | None = None, start: str | None = None,
-        end: str | None = None, limit: int = 100, offset: int = 0,
+        self,
+        *,
+        supplier_id: int | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         where = ["1=1"]
         params: list[Any] = []

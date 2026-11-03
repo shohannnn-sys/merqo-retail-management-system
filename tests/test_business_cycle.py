@@ -13,10 +13,13 @@ from retvia.services.sales import PaymentInput, SaleInput, SaleLineInput
 def make_product(products, unit_id, **kw):
     return products.create(
         ProductInput(
-            name=kw.pop("name", "চিনি"), sku=kw.pop("sku", "P1"), unit_id=unit_id,
+            name=kw.pop("name", "চিনি"),
+            sku=kw.pop("sku", "P1"),
+            unit_id=unit_id,
             purchase_price=kw.pop("purchase_price", 8000),
             selling_price=kw.pop("selling_price", 10000),
-            opening_qty=kw.pop("opening_qty", 100_000), **kw,
+            opening_qty=kw.pop("opening_qty", 100_000),
+            **kw,
         )
     )
 
@@ -29,7 +32,8 @@ class TestPurchases:
         sid = suppliers.create(SupplierInput(name="মেসার্স ভাই ভাই"))
         result = purchases.create(
             PurchaseInput(
-                supplier_id=sid, lines=[PurchaseLineInput(pid, 10_000, 10_000)],
+                supplier_id=sid,
+                lines=[PurchaseLineInput(pid, 10_000, 10_000)],
                 payments=[PaymentInput(cash_method_id, 50_000)],
             )
         )
@@ -61,8 +65,11 @@ class TestPurchases:
         pid = make_product(products, unit_id)
         sid = suppliers.create(SupplierInput(name="সাপ্লায়ার"))
         purchases.create(
-            PurchaseInput(supplier_id=sid, lines=[PurchaseLineInput(pid, 1_000, 5_000)],
-                          payments=[PaymentInput(cash_method_id, 5_000)])
+            PurchaseInput(
+                supplier_id=sid,
+                lines=[PurchaseLineInput(pid, 1_000, 5_000)],
+                payments=[PaymentInput(cash_method_id, 5_000)],
+            )
         )
         assert cash.expected_cash(open_shift["id"]) == 95_000
 
@@ -71,8 +78,11 @@ class TestPurchases:
         sid = suppliers.create(SupplierInput(name="সাপ্লায়ার"))
         with pytest.raises(ValidationError):
             purchases.create(
-                PurchaseInput(supplier_id=sid, lines=[PurchaseLineInput(pid, 1_000, 5_000)],
-                              payments=[PaymentInput(cash_method_id, 50_000)])
+                PurchaseInput(
+                    supplier_id=sid,
+                    lines=[PurchaseLineInput(pid, 1_000, 5_000)],
+                    payments=[PaymentInput(cash_method_id, 50_000)],
+                )
             )
 
     def test_purchase_cancel_restores_stock_and_payable(
@@ -81,8 +91,11 @@ class TestPurchases:
         pid = make_product(products, unit_id, opening_qty=10_000)
         sid = suppliers.create(SupplierInput(name="সাপ্লায়ার"))
         r = purchases.create(
-            PurchaseInput(supplier_id=sid, lines=[PurchaseLineInput(pid, 5_000, 9_000)],
-                          payments=[PaymentInput(cash_method_id, 10_000)])
+            PurchaseInput(
+                supplier_id=sid,
+                lines=[PurchaseLineInput(pid, 5_000, 9_000)],
+                payments=[PaymentInput(cash_method_id, 10_000)],
+            )
         )
         purchases.cancel(r["id"], reason="ভুল এন্ট্রি")
         assert products.get(pid)["stock_qty"] == 10_000
@@ -198,8 +211,11 @@ class TestSalesReturns:
         pid = make_product(products, unit_id, selling_price=10_000, purchase_price=8000)
         cid = customers.create(CustomerInput(name="রিটার্ন কাস্টমার"))
         result = sales.create(
-            SaleInput(lines=[SaleLineInput(pid, qty)], customer_id=cid,
-                      payments=[PaymentInput(cash_method_id, paid if paid is not None else qty * 10)])
+            SaleInput(
+                lines=[SaleLineInput(pid, qty)],
+                customer_id=cid,
+                payments=[PaymentInput(cash_method_id, paid if paid is not None else qty * 10)],
+            )
         )
         return pid, cid, result
 
@@ -210,8 +226,11 @@ class TestSalesReturns:
         item = db.query_one("SELECT id FROM sale_items WHERE sale_id=?", (r["id"],))
         before_stock = products.get(pid)["stock_qty"]
         result = sales_returns.create(
-            sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 2_000, "restock")],
-            reason="পছন্দ হয়নি", refund_amount=20_000, refund_method_id=cash_method_id,
+            sale_id=r["id"],
+            lines=[SalesReturnLine(int(item["id"]), 2_000, "restock")],
+            reason="পছন্দ হয়নি",
+            refund_amount=20_000,
+            refund_method_id=cash_method_id,
         )
         assert result["total_amount"] == 20_000
         assert result["cost_reversed"] == 16_000
@@ -225,8 +244,11 @@ class TestSalesReturns:
         item = db.query_one("SELECT id FROM sale_items WHERE sale_id=?", (r["id"],))
         before = products.get(pid)["stock_qty"]
         result = sales_returns.create(
-            sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 1_000, "damaged")],
-            reason="নষ্ট পণ্য", refund_amount=10_000, refund_method_id=cash_method_id,
+            sale_id=r["id"],
+            lines=[SalesReturnLine(int(item["id"]), 1_000, "damaged")],
+            reason="নষ্ট পণ্য",
+            refund_amount=10_000,
+            refund_method_id=cash_method_id,
         )
         assert products.get(pid)["stock_qty"] == before
         assert result["write_off_cost"] == 8_000
@@ -238,8 +260,13 @@ class TestSalesReturns:
     ):
         pid = make_product(products, unit_id, selling_price=10_000)
         cid = customers.create(CustomerInput(name="বাকি রিটার্ন"))
-        r = sales.create(SaleInput(lines=[SaleLineInput(pid, 5_000)], customer_id=cid,
-                                   payments=[PaymentInput(cash_method_id, 10_000)]))
+        r = sales.create(
+            SaleInput(
+                lines=[SaleLineInput(pid, 5_000)],
+                customer_id=cid,
+                payments=[PaymentInput(cash_method_id, 10_000)],
+            )
+        )
         assert customers.get(cid)["current_due"] == 40_000
         item = db.query_one("SELECT id FROM sale_items WHERE sale_id=?", (r["id"],))
         result = sales_returns.create(
@@ -257,7 +284,9 @@ class TestSalesReturns:
         item = db.query_one("SELECT id FROM sale_items WHERE sale_id=?", (r["id"],))
         sales_returns.create(sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 3_000)], reason="প্রথম")
         with pytest.raises(ValidationError, match="সর্বোচ্চ"):
-            sales_returns.create(sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 3_000)], reason="দ্বিতীয়")
+            sales_returns.create(
+                sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 3_000)], reason="দ্বিতীয়"
+            )
         result = sales_returns.create(
             sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 2_000)], reason="শেষ"
         )
@@ -277,19 +306,29 @@ class TestSalesReturns:
     ):
         pid = make_product(products, unit_id, selling_price=3_333)
         cid = customers.create(CustomerInput(name="ভগ্নাংশ"))
-        r = sales.create(SaleInput(lines=[SaleLineInput(pid, 3_000)], customer_id=cid,
-                                   payments=[PaymentInput(cash_method_id, 9_999)]))
+        r = sales.create(
+            SaleInput(
+                lines=[SaleLineInput(pid, 3_000)],
+                customer_id=cid,
+                payments=[PaymentInput(cash_method_id, 9_999)],
+            )
+        )
         item = db.query_one("SELECT id, net_amount FROM sale_items WHERE sale_id=?", (r["id"],))
-        first = sales_returns.create(sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 1_000)], reason="a")
-        second = sales_returns.create(sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 2_000)], reason="b")
+        first = sales_returns.create(
+            sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 1_000)], reason="a"
+        )
+        second = sales_returns.create(
+            sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 2_000)], reason="b"
+        )
         assert first["total_amount"] + second["total_amount"] == int(item["net_amount"])
 
     def test_return_without_customer_requires_full_refund(
         self, sales, products, sales_returns, unit_id, cash_method_id, open_shift, db
     ):
         pid = make_product(products, unit_id, selling_price=10_000)
-        r = sales.create(SaleInput(lines=[SaleLineInput(pid, 2_000)],
-                                   payments=[PaymentInput(cash_method_id, 20_000)]))
+        r = sales.create(
+            SaleInput(lines=[SaleLineInput(pid, 2_000)], payments=[PaymentInput(cash_method_id, 20_000)])
+        )
         item = db.query_one("SELECT id FROM sale_items WHERE sale_id=?", (r["id"],))
         with pytest.raises(ValidationError, match="অ্যাডভান্স"):
             sales_returns.create(sale_id=r["id"], lines=[SalesReturnLine(int(item["id"]), 1_000)], reason="x")
@@ -297,7 +336,16 @@ class TestSalesReturns:
 
 class TestPurchaseReturns:
     def test_return_reduces_stock_and_payable(
-        self, purchases, purchase_returns, products, suppliers, unit_id, cash_method_id, open_shift, inventory, db
+        self,
+        purchases,
+        purchase_returns,
+        products,
+        suppliers,
+        unit_id,
+        cash_method_id,
+        open_shift,
+        inventory,
+        db,
     ):
         pid = make_product(products, unit_id, opening_qty=0, purchase_price=0)
         sid = suppliers.create(SupplierInput(name="সাপ্লায়ার"))
@@ -321,19 +369,31 @@ class TestPurchaseReturns:
         r = purchases.create(PurchaseInput(supplier_id=sid, lines=[PurchaseLineInput(pid, 5_000, 9_000)]))
         item = db.query_one("SELECT id FROM purchase_items WHERE purchase_id=?", (r["id"],))
         with pytest.raises(ValidationError, match="সর্বোচ্চ"):
-            purchase_returns.create(purchase_id=r["id"], lines=[PurchaseReturnLine(int(item["id"]), 6_000)], reason="x")
+            purchase_returns.create(
+                purchase_id=r["id"], lines=[PurchaseReturnLine(int(item["id"]), 6_000)], reason="x"
+            )
 
     def test_cash_refund_increases_drawer(
         self, purchases, purchase_returns, products, suppliers, unit_id, cash_method_id, open_shift, cash, db
     ):
         pid = make_product(products, unit_id)
         sid = suppliers.create(SupplierInput(name="সাপ্লায়ার"))
-        r = purchases.create(PurchaseInput(supplier_id=sid, lines=[PurchaseLineInput(pid, 5_000, 9_000)],
-                                           payments=[PaymentInput(cash_method_id, 45_000)]))
+        r = purchases.create(
+            PurchaseInput(
+                supplier_id=sid,
+                lines=[PurchaseLineInput(pid, 5_000, 9_000)],
+                payments=[PaymentInput(cash_method_id, 45_000)],
+            )
+        )
         before = cash.expected_cash(open_shift["id"])
         item = db.query_one("SELECT id FROM purchase_items WHERE purchase_id=?", (r["id"],))
-        purchase_returns.create(purchase_id=r["id"], lines=[PurchaseReturnLine(int(item["id"]), 2_000)],
-                                reason="ফেরত", refund_amount=18_000, refund_method_id=cash_method_id)
+        purchase_returns.create(
+            purchase_id=r["id"],
+            lines=[PurchaseReturnLine(int(item["id"]), 2_000)],
+            reason="ফেরত",
+            refund_amount=18_000,
+            refund_method_id=cash_method_id,
+        )
         assert cash.expected_cash(open_shift["id"]) == before + 18_000
 
 
@@ -403,25 +463,55 @@ class TestCashSessions:
 
 class TestFullReconciliation:
     def test_mixed_business_day_reconciles_every_ledger(
-        self, db, products, customers, suppliers, sales, purchases, customer_payments,
-        supplier_payments, sales_returns, purchase_returns, expenses, inventory, cash,
-        unit_id, cash_method_id, open_shift,
+        self,
+        db,
+        products,
+        customers,
+        suppliers,
+        sales,
+        purchases,
+        customer_payments,
+        supplier_payments,
+        sales_returns,
+        purchase_returns,
+        expenses,
+        inventory,
+        cash,
+        unit_id,
+        cash_method_id,
+        open_shift,
     ):
         pid = make_product(products, unit_id, opening_qty=50_000, purchase_price=8000, selling_price=12000)
         cid = customers.create(CustomerInput(name="দৈনিক কাস্টমার", opening_due=10_000))
         sid = suppliers.create(SupplierInput(name="দৈনিক সাপ্লায়ার", opening_payable=20_000))
 
-        purchases.create(PurchaseInput(supplier_id=sid, lines=[PurchaseLineInput(pid, 20_000, 8500)],
-                                       payments=[PaymentInput(cash_method_id, 50_000)]))
-        r1 = sales.create(SaleInput(lines=[SaleLineInput(pid, 5_000)], customer_id=cid,
-                                    payments=[PaymentInput(cash_method_id, 30_000)]))
-        sales.create(SaleInput(lines=[SaleLineInput(pid, 3_000)], customer_id=cid,
-                               payments=[PaymentInput(cash_method_id, 36_000)]))
+        purchases.create(
+            PurchaseInput(
+                supplier_id=sid,
+                lines=[PurchaseLineInput(pid, 20_000, 8500)],
+                payments=[PaymentInput(cash_method_id, 50_000)],
+            )
+        )
+        r1 = sales.create(
+            SaleInput(
+                lines=[SaleLineInput(pid, 5_000)],
+                customer_id=cid,
+                payments=[PaymentInput(cash_method_id, 30_000)],
+            )
+        )
+        sales.create(
+            SaleInput(
+                lines=[SaleLineInput(pid, 3_000)],
+                customer_id=cid,
+                payments=[PaymentInput(cash_method_id, 36_000)],
+            )
+        )
         customer_payments.collect(customer_id=cid, amount=15_000, method_id=cash_method_id)
         supplier_payments.pay(supplier_id=sid, amount=30_000, method_id=cash_method_id)
         item = db.query_one("SELECT id FROM sale_items WHERE sale_id=?", (r1["id"],))
-        sales_returns.create(sale_id=r1["id"], lines=[SalesReturnLine(int(item["id"]), 1_000, "restock")],
-                             reason="রিটার্ন")
+        sales_returns.create(
+            sale_id=r1["id"], lines=[SalesReturnLine(int(item["id"]), 1_000, "restock")], reason="রিটার্ন"
+        )
         cat = int(db.scalar("SELECT id FROM expense_categories LIMIT 1"))
         expenses.create(category_id=cat, amount=12_000, method_id=cash_method_id)
 

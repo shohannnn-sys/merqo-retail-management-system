@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Any
 
 from ..core.errors import BusinessRuleError, NotFoundError, ValidationError
-from ..core.validation import optional_text, require_id, require_non_negative_money, require_text
+from ..core.validation import optional_text, require_non_negative_money, require_text
 from ..data.db import Database
 from .audit import AuditService
 from .settings import SettingsService
@@ -57,7 +57,9 @@ class CashService:
     # -------------------------------------------------------------- sessions
     def current_session(self, register_id: int | None = None) -> dict[str, Any] | None:
         if register_id is None:
-            row = self.db.query_one("SELECT * FROM cash_sessions WHERE status='open' ORDER BY id DESC LIMIT 1")
+            row = self.db.query_one(
+                "SELECT * FROM cash_sessions WHERE status='open' ORDER BY id DESC LIMIT 1"
+            )
         else:
             row = self.db.query_one(
                 "SELECT * FROM cash_sessions WHERE status='open' AND register_id=? ORDER BY id DESC LIMIT 1",
@@ -77,14 +79,21 @@ class CashService:
                 """INSERT INTO cash_sessions (register_id, opened_at, opening_cash, status, opened_by, notes)
                    VALUES (?,?,?, 'open', ?, ?)""",
                 (
-                    register_id, datetime.now().isoformat(timespec="seconds"), opening_cash,
-                    actor, optional_text(notes, max_length=300),
+                    register_id,
+                    datetime.now().isoformat(timespec="seconds"),
+                    opening_cash,
+                    actor,
+                    optional_text(notes, max_length=300),
                 ),
             )
             if opening_cash:
                 self.record_movement(
-                    session_id=sid, movement_type="opening", amount=opening_cash,
-                    reference_type="cash_session", reference_id=sid, notes="ওপেনিং ক্যাশ",
+                    session_id=sid,
+                    movement_type="opening",
+                    amount=opening_cash,
+                    reference_type="cash_session",
+                    reference_id=sid,
+                    notes="ওপেনিং ক্যাশ",
                 )
             self.audit.log("cash_session", sid, "open", f"শিফট শুরু — ওপেনিং ক্যাশ {opening_cash}")
         return self.session(sid)
@@ -95,9 +104,7 @@ class CashService:
         if session is not None:
             return int(session["id"])
         if self.settings.get_bool("require_open_register_for_cash", True):
-            raise BusinessRuleError(
-                "ক্যাশ লেনদেনের জন্য আগে ক্যাশ ড্রয়ার শিফট খুলুন (ক্যাশ রেজিস্টার মডিউল)"
-            )
+            raise BusinessRuleError("ক্যাশ লেনদেনের জন্য আগে ক্যাশ ড্রয়ার শিফট খুলুন (ক্যাশ রেজিস্টার মডিউল)")
         # Policy allows implicit sessions: open one with zero opening cash.
         created = self.open_session(opening_cash=0, actor="system", notes="স্বয়ংক্রিয় শিফট")
         return int(created["id"])
@@ -127,8 +134,13 @@ class CashService:
                 reference_id, movement_at, notes)
                VALUES (?,?,?,?,?,?,?,?)""",
             (
-                session_id, movement_type, amount, payment_method_id, reference_type,
-                reference_id, datetime.now().isoformat(timespec="seconds"),
+                session_id,
+                movement_type,
+                amount,
+                payment_method_id,
+                reference_type,
+                reference_id,
+                datetime.now().isoformat(timespec="seconds"),
                 optional_text(notes, max_length=300),
             ),
         )
@@ -146,8 +158,11 @@ class CashService:
         signed = amount if movement_type == "cash_in" else -amount
         with self.db.transaction():
             mid = self.record_movement(
-                session_id=session_id, movement_type=movement_type, amount=signed,
-                reference_type="manual", notes=reason,
+                session_id=session_id,
+                movement_type=movement_type,
+                amount=signed,
+                reference_type="manual",
+                notes=reason,
             )
             self.audit.log("cash_movement", mid, movement_type, f"{reason} — {amount}")
         return {"id": mid, "session_id": session_id, "amount": signed}
@@ -183,13 +198,19 @@ class CashService:
                           difference=?, closed_by=?, notes=notes || ?
                     WHERE id=?""",
                 (
-                    datetime.now().isoformat(timespec="seconds"), expected, actual_cash,
-                    difference, actor, f"\n[ক্লোজিং: {optional_text(notes, max_length=300)}]",
+                    datetime.now().isoformat(timespec="seconds"),
+                    expected,
+                    actual_cash,
+                    difference,
+                    actor,
+                    f"\n[ক্লোজিং: {optional_text(notes, max_length=300)}]",
                     session_id,
                 ),
             )
             self.audit.log(
-                "cash_session", session_id, "close",
+                "cash_session",
+                session_id,
+                "close",
                 f"শিফট বন্ধ — প্রত্যাশিত {expected}, প্রকৃত {actual_cash}, পার্থক্য {difference}",
                 after={"expected": expected, "actual": actual_cash, "difference": difference},
             )
@@ -225,8 +246,7 @@ class CashService:
             (session_id,),
         )
         return [
-            {**dict(r), "label": MOVEMENT_LABELS.get(r["movement_type"], r["movement_type"])}
-            for r in rows
+            {**dict(r), "label": MOVEMENT_LABELS.get(r["movement_type"], r["movement_type"])} for r in rows
         ]
 
     def sessions(
@@ -243,7 +263,7 @@ class CashService:
         rows = self.db.query(
             f"""SELECT cs.*, cr.name AS register_name FROM cash_sessions cs
                   JOIN cash_registers cr ON cr.id=cs.register_id
-                 WHERE {' AND '.join(where)} ORDER BY cs.id DESC LIMIT ?""",
+                 WHERE {" AND ".join(where)} ORDER BY cs.id DESC LIMIT ?""",
             [*params, limit],
         )
         return [dict(r) for r in rows]
@@ -255,9 +275,7 @@ class CashService:
                  FROM cash_movements WHERE date(movement_at)=? GROUP BY movement_type""",
             (day,),
         )
-        breakdown = {
-            r["movement_type"]: int(r["total"]) for r in rows
-        }
+        breakdown = {r["movement_type"]: int(r["total"]) for r in rows}
         return {
             "date": day,
             "breakdown": [

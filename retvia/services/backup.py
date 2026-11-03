@@ -50,7 +50,11 @@ def _safe_member(name: str) -> bool:
 
 class BackupService:
     def __init__(
-        self, db: Database, data_dir: Path, *, settings: SettingsService | None = None,
+        self,
+        db: Database,
+        data_dir: Path,
+        *,
+        settings: SettingsService | None = None,
         audit: AuditService | None = None,
     ) -> None:
         self.db = db
@@ -111,9 +115,7 @@ class BackupService:
                 "notes": notes,
             }
             manifest_path = stage / MANIFEST_NAME
-            manifest_path.write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             temp_archive = stage / "archive.zip"
             with zipfile.ZipFile(temp_archive, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
@@ -131,12 +133,18 @@ class BackupService:
                 (str(final_path), final_path.name, size, checksum, backup_type, notes),
             )
             self.audit.log(
-                "backup", None, "create", f"ব্যাকআপ তৈরি: {final_path.name} ({size} বাইট)",
+                "backup",
+                None,
+                "create",
+                f"ব্যাকআপ তৈরি: {final_path.name} ({size} বাইট)",
                 after={"type": backup_type, "checksum": checksum[:16]},
             )
             return {
-                "path": str(final_path), "file_name": final_path.name,
-                "size_bytes": size, "checksum": checksum, "backup_type": backup_type,
+                "path": str(final_path),
+                "file_name": final_path.name,
+                "size_bytes": size,
+                "checksum": checksum,
+                "backup_type": backup_type,
             }
         except BackupError:
             raise
@@ -183,12 +191,13 @@ class BackupService:
                 raise BackupError("ব্যাকআপের ডেটাবেস নষ্ট", detail="; ".join(messages))
             schema_version = int(manifest.get("schema_version", 0))
             if schema_version > self.db.schema_version:
-                raise BackupError(
-                    "ব্যাকআপটি নতুন সংস্করণের — আগে সফটওয়্যার আপডেট করুন"
-                )
+                raise BackupError("ব্যাকআপটি নতুন সংস্করণের — আগে সফটওয়্যার আপডেট করুন")
             return {
-                "valid": True, "manifest": manifest, "staged_dir": str(stage),
-                "schema_version": schema_version, "checksum": sha256_file(path),
+                "valid": True,
+                "manifest": manifest,
+                "staged_dir": str(stage),
+                "schema_version": schema_version,
+                "checksum": sha256_file(path),
             }
         except Exception:
             shutil.rmtree(stage, ignore_errors=True)
@@ -203,7 +212,9 @@ class BackupService:
         pre_restore: dict[str, Any] | None = None
         try:
             # 1. Protect current data before anything is replaced.
-            pre_restore = self.create(backup_type="pre_restore", notes=f"রিস্টোরের আগে: {Path(archive_path).name}")
+            pre_restore = self.create(
+                backup_type="pre_restore", notes=f"রিস্টোরের আগে: {Path(archive_path).name}"
+            )
             staged_db = stage / DB_MEMBER
 
             # 2. Migrate the staged copy forward if the backup is older.
@@ -250,8 +261,10 @@ class BackupService:
                        (file_path, file_name, size_bytes, checksum, backup_type, status, notes)
                        VALUES (?,?,?,?, 'pre_restore', 'success', ?)""",
                     (
-                        pre_restore["path"], pre_restore["file_name"],
-                        pre_restore["size_bytes"], pre_restore["checksum"],
+                        pre_restore["path"],
+                        pre_restore["file_name"],
+                        pre_restore["size_bytes"],
+                        pre_restore["checksum"],
                         "রিস্টোরের আগে স্বয়ংক্রিয় সুরক্ষা ব্যাকআপ",
                     ),
                 )
@@ -260,13 +273,17 @@ class BackupService:
                    (file_path, file_name, size_bytes, checksum, backup_type, status, notes)
                    VALUES (?,?,?,?, 'manual', 'success', ?)""",
                 (
-                    str(archive_path), Path(archive_path).name,
+                    str(archive_path),
+                    Path(archive_path).name,
                     Path(archive_path).stat().st_size if Path(archive_path).is_file() else 0,
-                    validation["checksum"], "এই ব্যাকআপ থেকে রিস্টোর সম্পন্ন হয়েছে",
+                    validation["checksum"],
+                    "এই ব্যাকআপ থেকে রিস্টোর সম্পন্ন হয়েছে",
                 ),
             )
             self.audit.log(
-                "backup", None, "restore",
+                "backup",
+                None,
+                "restore",
                 f"রিস্টোর সম্পন্ন: {Path(archive_path).name}",
                 after={"pre_restore_backup": pre_restore["file_name"] if pre_restore else ""},
             )
@@ -289,9 +306,7 @@ class BackupService:
     # ------------------------------------------------------------ retention
     def history(self, limit: int = 100) -> list[dict[str, Any]]:
         return [
-            dict(r) for r in self.db.query(
-                "SELECT * FROM backup_history ORDER BY id DESC LIMIT ?", (limit,)
-            )
+            dict(r) for r in self.db.query("SELECT * FROM backup_history ORDER BY id DESC LIMIT ?", (limit,))
         ]
 
     def list_files(self, directory: Path | None = None) -> list[dict[str, Any]]:
@@ -302,8 +317,12 @@ class BackupService:
         for path in sorted(folder.glob(f"*{BACKUP_SUFFIX}"), reverse=True):
             stat = path.stat()
             files.append(
-                {"path": str(path), "file_name": path.name, "size_bytes": stat.st_size,
-                 "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")}
+                {
+                    "path": str(path),
+                    "file_name": path.name,
+                    "size_bytes": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                }
             )
         return files
 
@@ -314,7 +333,8 @@ class BackupService:
         folder = Path(directory) if directory else self.backup_dir()
         candidates = sorted(
             folder.glob(f"retvia-automatic-*{BACKUP_SUFFIX}"),
-            key=lambda p: p.stat().st_mtime, reverse=True,
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
         )
         removed = []
         for path in candidates[keep:]:

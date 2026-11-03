@@ -69,9 +69,11 @@ class NumberingService:
     def peek(self, doc_type: str, period: int | None = None) -> str:
         """Preview the next number without consuming it (for UI display only)."""
         period = period or date.today().year
-        prefix = self.settings.get(
-            _PREFIX_KEYS.get(doc_type, ""), _DEFAULT_PREFIXES.get(doc_type, "DOC")
-        ).strip().upper()
+        prefix = (
+            self.settings.get(_PREFIX_KEYS.get(doc_type, ""), _DEFAULT_PREFIXES.get(doc_type, "DOC"))
+            .strip()
+            .upper()
+        )
         row = self.db.query_one(
             "SELECT next_number FROM invoice_sequences WHERE doc_type=? AND period=?",
             (doc_type, str(period)),

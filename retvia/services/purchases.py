@@ -90,8 +90,11 @@ class PurchaseService:
                 raise ValidationError("লাইন ডিস্কাউন্ট মোট মূল্যের বেশি হতে পারে না")
             prepared.append(
                 {
-                    "product": dict(row), "quantity": line.quantity, "unit_cost": line.unit_cost,
-                    "gross": gross, "discount": line.discount_amount,
+                    "product": dict(row),
+                    "quantity": line.quantity,
+                    "unit_cost": line.unit_cost,
+                    "gross": gross,
+                    "discount": line.discount_amount,
                     "net_before": gross - line.discount_amount,
                 }
             )
@@ -104,13 +107,12 @@ class PurchaseService:
             raise ValidationError("ইনভয়েস ডিস্কাউন্ট মোট মূল্যের বেশি হতে পারে না")
         shares = (
             allocate(data.discount_amount, [p["net_before"] for p in prepared])
-            if data.discount_amount else [0] * len(prepared)
+            if data.discount_amount
+            else [0] * len(prepared)
         )
         for p, share in zip(prepared, shares, strict=True):
             p["net"] = p["net_before"] - share
-            p["effective_cost"] = (
-                round_div(p["net"] * MILLI_PER_UNIT, p["quantity"]) if p["quantity"] else 0
-            )
+            p["effective_cost"] = round_div(p["net"] * MILLI_PER_UNIT, p["quantity"]) if p["quantity"] else 0
         grand_total = sum(p["net"] for p in prepared)
 
         paid = sum(p.amount for p in data.payments)
@@ -139,9 +141,17 @@ class PurchaseService:
                     discount_amount, grand_total, paid_amount, due_amount, status, notes, cash_session_id)
                    VALUES (?,?,?,?,?,?,?,?,?, 'completed', ?, ?)""",
                 (
-                    invoice_no, optional_text(data.supplier_invoice_no, max_length=120),
-                    data.supplier_id, day, subtotal, line_discounts + data.discount_amount,
-                    grand_total, paid, due, notes, session_id,
+                    invoice_no,
+                    optional_text(data.supplier_invoice_no, max_length=120),
+                    data.supplier_id,
+                    day,
+                    subtotal,
+                    line_discounts + data.discount_amount,
+                    grand_total,
+                    paid,
+                    due,
+                    notes,
+                    session_id,
                 ),
             )
             for p in prepared:
@@ -164,9 +174,16 @@ class PurchaseService:
                         gross_amount, discount_amount, net_amount, effective_cost)
                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        purchase_id, int(product["id"]), product["name"], product["unit_name"],
-                        p["quantity"], p["unit_cost"], p["gross"],
-                        p["discount"] + (p["net_before"] - p["net"]), p["net"], p["effective_cost"],
+                        purchase_id,
+                        int(product["id"]),
+                        product["name"],
+                        product["unit_name"],
+                        p["quantity"],
+                        p["unit_cost"],
+                        p["gross"],
+                        p["discount"] + (p["net_before"] - p["net"]),
+                        p["net"],
+                        p["effective_cost"],
                     ),
                 )
                 # Keep the product's reference purchase price current for future entries.
@@ -182,7 +199,9 @@ class PurchaseService:
                        (purchase_id, payment_method_id, amount, paid_at, reference, notes)
                        VALUES (?,?,?,?,?,?)""",
                     (
-                        purchase_id, payment.method_id, payment.amount,
+                        purchase_id,
+                        payment.method_id,
+                        payment.amount,
                         now.isoformat(timespec="seconds"),
                         optional_text(payment.reference, max_length=120),
                         optional_text(payment.notes, max_length=300),
@@ -191,9 +210,13 @@ class PurchaseService:
                 summary.append(methods[payment.method_id]["name"])
                 if methods[payment.method_id]["is_cash"] and session_id is not None:
                     self.cash.record_movement(
-                        session_id=session_id, movement_type="purchase", amount=-payment.amount,
-                        payment_method_id=payment.method_id, reference_type="purchase",
-                        reference_id=purchase_id, notes=invoice_no,
+                        session_id=session_id,
+                        movement_type="purchase",
+                        amount=-payment.amount,
+                        payment_method_id=payment.method_id,
+                        reference_type="purchase",
+                        reference_id=purchase_id,
+                        notes=invoice_no,
                     )
 
             self.db.execute(
@@ -206,18 +229,31 @@ class PurchaseService:
                     paid_amount, due_amount, payment_summary, reference_type, reference_id, notes)
                    VALUES ('purchase', ?, ?, 'supplier', ?, ?, ?, ?, ?, ?, 'purchase', ?, ?)""",
                 (
-                    invoice_no, day, data.supplier_id, supplier["name"], grand_total, paid, due,
-                    ", ".join(dict.fromkeys(summary)), purchase_id, notes,
+                    invoice_no,
+                    day,
+                    data.supplier_id,
+                    supplier["name"],
+                    grand_total,
+                    paid,
+                    due,
+                    ", ".join(dict.fromkeys(summary)),
+                    purchase_id,
+                    notes,
                 ),
             )
             self.audit.log(
-                "purchase", purchase_id, "create",
+                "purchase",
+                purchase_id,
+                "create",
                 f"পারচেজ {invoice_no} — মোট {grand_total}, বাকি {due}",
                 after={"invoice_no": invoice_no, "grand_total": grand_total, "due": due},
             )
         return {
-            "id": purchase_id, "invoice_no": invoice_no, "grand_total": grand_total,
-            "paid_amount": paid, "due_amount": due,
+            "id": purchase_id,
+            "invoice_no": invoice_no,
+            "grand_total": grand_total,
+            "paid_amount": paid,
+            "due_amount": due,
         }
 
     def get(self, purchase_id: int) -> dict[str, Any]:
@@ -230,12 +266,14 @@ class PurchaseService:
             raise NotFoundError("পারচেজ খুঁজে পাওয়া যায়নি")
         data = dict(row)
         data["items"] = [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 "SELECT * FROM purchase_items WHERE purchase_id=? ORDER BY id", (purchase_id,)
             )
         ]
         data["payments"] = [
-            dict(r) for r in self.db.query(
+            dict(r)
+            for r in self.db.query(
                 """SELECT pp.*, pm.name AS method_name FROM purchase_payments pp
                      JOIN payment_methods pm ON pm.id=pp.payment_method_id
                     WHERE pp.purchase_id=? ORDER BY pp.id""",
@@ -267,8 +305,14 @@ class PurchaseService:
         return max(0, int(row["grand_total"]) - int(row["paid_amount"]) - allocated - returned)
 
     def search(
-        self, *, start: str | None = None, end: str | None = None, query: str = "",
-        supplier_id: int | None = None, limit: int = 50, offset: int = 0,
+        self,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        query: str = "",
+        supplier_id: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> dict[str, Any]:
         where = ["1=1"]
         params: list[Any] = []
@@ -305,19 +349,25 @@ class PurchaseService:
         purchase = self.get(purchase_id)
         if purchase["status"] == "cancelled":
             raise BusinessRuleError("এই পারচেজ আগেই বাতিল করা হয়েছে")
-        if int(self.db.scalar(
-            "SELECT COALESCE(SUM(returned_qty),0) FROM purchase_items WHERE purchase_id=?",
-            (purchase_id,),
-        )):
+        if int(
+            self.db.scalar(
+                "SELECT COALESCE(SUM(returned_qty),0) FROM purchase_items WHERE purchase_id=?",
+                (purchase_id,),
+            )
+        ):
             raise BusinessRuleError("এই পারচেজে রিটার্ন হয়েছে — বাতিল করা যাবে না")
         day = date.today().isoformat()
         with self.db.transaction():
             for item in purchase["items"]:
                 self.inventory.apply_movement(
-                    product_id=int(item["product_id"]), qty_delta=-int(item["quantity"]),
-                    movement_type="purchase_return", movement_date=day,
-                    unit_cost=int(item["effective_cost"]), reference_type="purchase_cancel",
-                    reference_id=purchase_id, notes=f"বাতিল: {purchase['invoice_no']} — {reason}",
+                    product_id=int(item["product_id"]),
+                    qty_delta=-int(item["quantity"]),
+                    movement_type="purchase_return",
+                    movement_date=day,
+                    unit_cost=int(item["effective_cost"]),
+                    reference_type="purchase_cancel",
+                    reference_id=purchase_id,
+                    notes=f"বাতিল: {purchase['invoice_no']} — {reason}",
                     allow_negative=True,
                 )
             self.db.execute(
@@ -335,8 +385,11 @@ class PurchaseService:
             if cash_paid:
                 session_id = self.cash.require_open_session()
                 self.cash.record_movement(
-                    session_id=session_id, movement_type="purchase_return_refund", amount=cash_paid,
-                    reference_type="purchase_cancel", reference_id=purchase_id,
+                    session_id=session_id,
+                    movement_type="purchase_return_refund",
+                    amount=cash_paid,
+                    reference_type="purchase_cancel",
+                    reference_id=purchase_id,
                     notes=f"বাতিল: {purchase['invoice_no']}",
                 )
             self.db.execute(

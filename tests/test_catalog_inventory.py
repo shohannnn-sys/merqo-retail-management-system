@@ -176,7 +176,9 @@ class TestInventoryCosting:
         pid = make_product(products, unit_id, opening_qty=1_000)
         with pytest.raises(InsufficientStockError):
             inventory.apply_movement(
-                product_id=pid, qty_delta=-2_000, movement_type="sale",
+                product_id=pid,
+                qty_delta=-2_000,
+                movement_type="sale",
                 movement_date="2026-01-01",
             )
 
@@ -184,7 +186,9 @@ class TestInventoryCosting:
         settings.set("allow_negative_stock", "1")
         pid = make_product(products, unit_id, opening_qty=1_000)
         inventory.apply_movement(
-            product_id=pid, qty_delta=-2_000, movement_type="sale",
+            product_id=pid,
+            qty_delta=-2_000,
+            movement_type="sale",
             movement_date="2026-01-01",
         )
         assert products.get(pid)["stock_qty"] == -1_000
@@ -192,7 +196,9 @@ class TestInventoryCosting:
     def test_empty_shelf_has_zero_value(self, products, inventory, unit_id):
         pid = make_product(products, unit_id, opening_qty=3_000, purchase_price=3333)
         inventory.apply_movement(
-            product_id=pid, qty_delta=-3_000, movement_type="sale",
+            product_id=pid,
+            qty_delta=-3_000,
+            movement_type="sale",
             movement_date="2026-01-01",
         )
         p = products.get(pid)
@@ -201,11 +207,17 @@ class TestInventoryCosting:
 
     def test_fractional_quantity_costing(self, products, inventory, kg_unit_id):
         pid = make_product(
-            products, kg_unit_id, name="চাল", sku="RICE",
-            opening_qty=2_500, purchase_price=6000,
+            products,
+            kg_unit_id,
+            name="চাল",
+            sku="RICE",
+            opening_qty=2_500,
+            purchase_price=6000,
         )
         result = inventory.apply_movement(
-            product_id=pid, qty_delta=-1_250, movement_type="sale",
+            product_id=pid,
+            qty_delta=-1_250,
+            movement_type="sale",
             movement_date="2026-01-01",
         )
         assert result.value_delta == -round_div(6000 * 1250, MILLI_PER_UNIT)
@@ -215,11 +227,16 @@ class TestInventoryCosting:
         pid = make_product(products, unit_id, opening_qty=100_000, purchase_price=7_777)
         for i in range(1, 21):
             inventory.apply_movement(
-                product_id=pid, qty_delta=3_000, movement_type="purchase",
-                movement_date="2026-01-01", unit_cost=7_000 + i * 137,
+                product_id=pid,
+                qty_delta=3_000,
+                movement_type="purchase",
+                movement_date="2026-01-01",
+                unit_cost=7_000 + i * 137,
             )
             inventory.apply_movement(
-                product_id=pid, qty_delta=-4_500, movement_type="sale",
+                product_id=pid,
+                qty_delta=-4_500,
+                movement_type="sale",
                 movement_date="2026-01-01",
             )
         assert inventory.reconcile() == []
@@ -229,7 +246,9 @@ class TestInventoryCosting:
     def test_non_stock_product_does_not_move_quantity(self, products, inventory, unit_id):
         pid = make_product(products, unit_id, name="সার্ভিস", sku="SVC", track_stock=False)
         inventory.apply_movement(
-            product_id=pid, qty_delta=-1_000, movement_type="sale",
+            product_id=pid,
+            qty_delta=-1_000,
+            movement_type="sale",
             movement_date="2026-01-01",
         )
         assert products.get(pid)["stock_qty"] == 0
@@ -239,8 +258,11 @@ class TestAdjustments:
     def test_damage_reduces_stock_and_value(self, products, inventory, unit_id):
         pid = make_product(products, unit_id, opening_qty=10_000, purchase_price=8000)
         result = inventory.adjust(
-            product_id=pid, adjustment_type="damage", quantity=2_000,
-            reason="ভেঙে গেছে", adjustment_date="2026-01-05",
+            product_id=pid,
+            adjustment_type="damage",
+            quantity=2_000,
+            reason="ভেঙে গেছে",
+            adjustment_date="2026-01-05",
         )
         assert result["qty_delta"] == -2_000
         assert result["value_delta"] == -16_000
@@ -250,16 +272,23 @@ class TestAdjustments:
     def test_write_off_value_reported(self, products, inventory, unit_id):
         pid = make_product(products, unit_id, opening_qty=10_000, purchase_price=8000)
         inventory.adjust(
-            product_id=pid, adjustment_type="expiry", quantity=1_000,
-            reason="মেয়াদ শেষ", adjustment_date="2026-01-05",
+            product_id=pid,
+            adjustment_type="expiry",
+            quantity=1_000,
+            reason="মেয়াদ শেষ",
+            adjustment_date="2026-01-05",
         )
         assert inventory.write_off_value("2026-01-01", "2026-01-31") == 8_000
 
     def test_physical_count_increase(self, products, inventory, unit_id):
         pid = make_product(products, unit_id, opening_qty=10_000, purchase_price=8000)
         result = inventory.adjust(
-            product_id=pid, adjustment_type="count_increase", quantity=0,
-            counted_qty=12_000, reason="গণনায় বেশি", adjustment_date="2026-01-05",
+            product_id=pid,
+            adjustment_type="count_increase",
+            quantity=0,
+            counted_qty=12_000,
+            reason="গণনায় বেশি",
+            adjustment_date="2026-01-05",
         )
         assert result["qty_delta"] == 2_000
         assert products.get(pid)["stock_qty"] == 12_000
@@ -268,16 +297,23 @@ class TestAdjustments:
         pid = make_product(products, unit_id, opening_qty=10_000)
         with pytest.raises(ValidationError):
             inventory.adjust(
-                product_id=pid, adjustment_type="count_increase", quantity=0,
-                counted_qty=5_000, reason="x", adjustment_date="2026-01-05",
+                product_id=pid,
+                adjustment_type="count_increase",
+                quantity=0,
+                counted_qty=5_000,
+                reason="x",
+                adjustment_date="2026-01-05",
             )
 
     def test_reason_required(self, products, inventory, unit_id):
         pid = make_product(products, unit_id)
         with pytest.raises(ValidationError):
             inventory.adjust(
-                product_id=pid, adjustment_type="loss", quantity=1_000,
-                reason="  ", adjustment_date="2026-01-05",
+                product_id=pid,
+                adjustment_type="loss",
+                quantity=1_000,
+                reason="  ",
+                adjustment_date="2026-01-05",
             )
 
     def test_valuation_totals(self, products, inventory, unit_id):

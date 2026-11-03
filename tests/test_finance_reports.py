@@ -23,52 +23,112 @@ def reports(db, settings):
 
 
 @pytest.fixture()
-def populated(db, products, customers, suppliers, sales, purchases, customer_payments,
-              supplier_payments, sales_returns, expenses, unit_id, cash_method_id, open_shift):
+def populated(
+    db,
+    products,
+    customers,
+    suppliers,
+    sales,
+    purchases,
+    customer_payments,
+    supplier_payments,
+    sales_returns,
+    expenses,
+    unit_id,
+    cash_method_id,
+    open_shift,
+):
     """A realistic month of activity built only from real service calls."""
-    pid = products.create(ProductInput(
-        name="সয়াবিন তেল", sku="OIL-1", unit_id=unit_id,
-        purchase_price=15000, selling_price=18000, opening_qty=100_000,
-    ))
-    pid2 = products.create(ProductInput(
-        name="চিনি", sku="SUG-1", unit_id=unit_id,
-        purchase_price=9000, selling_price=11000, opening_qty=100_000,
-    ))
+    pid = products.create(
+        ProductInput(
+            name="সয়াবিন তেল",
+            sku="OIL-1",
+            unit_id=unit_id,
+            purchase_price=15000,
+            selling_price=18000,
+            opening_qty=100_000,
+        )
+    )
+    pid2 = products.create(
+        ProductInput(
+            name="চিনি",
+            sku="SUG-1",
+            unit_id=unit_id,
+            purchase_price=9000,
+            selling_price=11000,
+            opening_qty=100_000,
+        )
+    )
     cid = customers.create(CustomerInput(name="আব্দুল করিম", phone="01712345678", opening_due=10000))
     sid = suppliers.create(SupplierInput(name="মেসার্স রহমান ট্রেডার্স", opening_payable=25000))
 
-    purchases.create(PurchaseInput(
-        supplier_id=sid, lines=[PurchaseLineInput(pid, 20_000, 15500)],
-        payments=[PaymentInput(cash_method_id, 100000)], purchase_date="2026-06-03",
-    ))
-    r1 = sales.create(SaleInput(
-        lines=[SaleLineInput(pid, 5_000), SaleLineInput(pid2, 3_000)], customer_id=cid,
-        payments=[PaymentInput(cash_method_id, 50000)], sale_date="2026-06-05",
-        invoice_discount_type="percent", invoice_discount_value=500,
-    ))
-    sales.create(SaleInput(
-        lines=[SaleLineInput(pid2, 4_000)], customer_id=cid,
-        payments=[PaymentInput(cash_method_id, 44000)], sale_date="2026-06-10",
-    ))
-    sales.create(SaleInput(
-        lines=[SaleLineInput(pid, 2_000)], payments=[PaymentInput(cash_method_id, 36000)],
-        sale_date="2026-06-15",
-    ))
-    customer_payments.collect(customer_id=cid, amount=30000, method_id=cash_method_id,
-                              payment_date="2026-06-18")
-    supplier_payments.pay(supplier_id=sid, amount=100000, method_id=cash_method_id,
-                          payment_date="2026-06-20")
+    purchases.create(
+        PurchaseInput(
+            supplier_id=sid,
+            lines=[PurchaseLineInput(pid, 20_000, 15500)],
+            payments=[PaymentInput(cash_method_id, 100000)],
+            purchase_date="2026-06-03",
+        )
+    )
+    r1 = sales.create(
+        SaleInput(
+            lines=[SaleLineInput(pid, 5_000), SaleLineInput(pid2, 3_000)],
+            customer_id=cid,
+            payments=[PaymentInput(cash_method_id, 50000)],
+            sale_date="2026-06-05",
+            invoice_discount_type="percent",
+            invoice_discount_value=500,
+        )
+    )
+    sales.create(
+        SaleInput(
+            lines=[SaleLineInput(pid2, 4_000)],
+            customer_id=cid,
+            payments=[PaymentInput(cash_method_id, 44000)],
+            sale_date="2026-06-10",
+        )
+    )
+    sales.create(
+        SaleInput(
+            lines=[SaleLineInput(pid, 2_000)],
+            payments=[PaymentInput(cash_method_id, 36000)],
+            sale_date="2026-06-15",
+        )
+    )
+    customer_payments.collect(
+        customer_id=cid, amount=30000, method_id=cash_method_id, payment_date="2026-06-18"
+    )
+    supplier_payments.pay(supplier_id=sid, amount=100000, method_id=cash_method_id, payment_date="2026-06-20")
     item = db.query_one("SELECT id FROM sale_items WHERE sale_id=? ORDER BY id LIMIT 1", (r1["id"],))
-    sales_returns.create(sale_id=r1["id"], lines=[SalesReturnLine(int(item["id"]), 1_000, "restock")],
-                         reason="রিটার্ন", return_date="2026-06-22")
+    sales_returns.create(
+        sale_id=r1["id"],
+        lines=[SalesReturnLine(int(item["id"]), 1_000, "restock")],
+        reason="রিটার্ন",
+        return_date="2026-06-22",
+    )
     damaged = db.query_one("SELECT id FROM sale_items WHERE sale_id=? ORDER BY id DESC LIMIT 1", (r1["id"],))
-    sales_returns.create(sale_id=r1["id"], lines=[SalesReturnLine(int(damaged["id"]), 1_000, "damaged")],
-                         reason="নষ্ট", return_date="2026-06-23")
+    sales_returns.create(
+        sale_id=r1["id"],
+        lines=[SalesReturnLine(int(damaged["id"]), 1_000, "damaged")],
+        reason="নষ্ট",
+        return_date="2026-06-23",
+    )
     cat = int(db.scalar("SELECT id FROM expense_categories LIMIT 1"))
-    expenses.create(category_id=cat, amount=150000, method_id=cash_method_id,
-                    expense_date="2026-06-25", description="দোকান ভাড়া")
-    return {"product": pid, "product2": pid2, "customer": cid, "supplier": sid,
-            "start": "2026-06-01", "end": "2026-06-30"}
+    expenses.create(
+        category_id=cat,
+        amount=150000,
+        method_id=cash_method_id,
+        expense_date="2026-06-25",
+        description="দোকান ভাড়া",
+    )
+    return {
+        "product": pid,
+        "product2": pid2,
+        "customer": cid,
+        "supplier": sid,
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+    }
 
 
 class TestProfitAndLoss:
@@ -159,15 +219,15 @@ class TestReconciliation:
         assert result["foreign_key_violations"] == []
 
     def test_detects_tampered_stock(self, finance, populated, db):
-        db.execute("UPDATE products SET stock_qty = stock_qty + 5000 WHERE id=?",
-                   (populated["product"],))
+        db.execute("UPDATE products SET stock_qty = stock_qty + 5000 WHERE id=?", (populated["product"],))
         result = finance.reconcile_all()
         assert not result["healthy"]
         assert "inventory" in result["problems"]
 
     def test_detects_tampered_customer_due(self, finance, populated, db):
-        db.execute("UPDATE customers SET current_due = current_due + 12345 WHERE id=?",
-                   (populated["customer"],))
+        db.execute(
+            "UPDATE customers SET current_due = current_due + 12345 WHERE id=?", (populated["customer"],)
+        )
         result = finance.reconcile_all()
         assert not result["healthy"]
         assert "customers" in result["problems"]
@@ -222,8 +282,9 @@ class TestReportRegistry:
         assert result.totals["amount"] == 150000
 
     def test_low_and_out_of_stock_reports(self, reports, products, unit_id, populated):
-        products.create(ProductInput(name="শেষ পণ্য", sku="OUT-1", unit_id=unit_id,
-                                     opening_qty=0, min_stock_qty=5000))
+        products.create(
+            ProductInput(name="শেষ পণ্য", sku="OUT-1", unit_id=unit_id, opening_qty=0, min_stock_qty=5000)
+        )
         out = reports.run("out_of_stock", {})
         assert any(r["sku"] == "OUT-1" for r in out.rows)
 
@@ -243,12 +304,17 @@ class TestReportRegistry:
         assert all(r["current_due"] > 0 for r in result.rows)
 
     def test_transaction_history_covers_all_types(self, reports, populated):
-        result = reports.run("transaction_history",
-                             {"start": populated["start"], "end": populated["end"]})
+        result = reports.run("transaction_history", {"start": populated["start"], "end": populated["end"]})
         kinds = {r["txn_type"] for r in result.rows}
-        assert {"sale", "purchase", "customer_payment", "supplier_payment",
-                "sales_return", "expense"} <= kinds
+        assert {
+            "sale",
+            "purchase",
+            "customer_payment",
+            "supplier_payment",
+            "sales_return",
+            "expense",
+        } <= kinds
 
     def test_bangla_text_survives_report_roundtrip(self, reports, populated):
         result = reports.run("custom_sales", {"start": populated["start"], "end": populated["end"]})
-        assert any("আব্দুল করিম" == r["customer"] for r in result.rows)
+        assert any(r["customer"] == "আব্দুল করিম" for r in result.rows)

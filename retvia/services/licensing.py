@@ -26,12 +26,12 @@ import platform
 import subprocess
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from cryptography.exceptions import InvalidSignature, InvalidTag
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
@@ -65,9 +65,7 @@ def _b64d(text: str) -> bytes:
 
 def canonical_json(payload: dict[str, Any]) -> bytes:
     """Deterministic serialization — the exact bytes that get signed."""
-    return json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 # ------------------------------------------------------------------- keypair
@@ -133,8 +131,11 @@ class LicensePayload:
 
 
 def new_license_payload(
-    *, business_name: str, business_identity: str,
-    hardware_fingerprint: dict[str, Any] | None = None, notes: str = "",
+    *,
+    business_name: str,
+    business_identity: str,
+    hardware_fingerprint: dict[str, Any] | None = None,
+    notes: str = "",
 ) -> LicensePayload:
     business_name = clean_text(business_name, max_length=200)
     business_identity = clean_text(business_identity, max_length=120)
@@ -146,7 +147,7 @@ def new_license_payload(
         license_id=f"LIC-{uuid.uuid4().hex[:16].upper()}",
         business_name=business_name,
         business_identity=business_identity,
-        issued_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        issued_at=datetime.now(UTC).isoformat(timespec="seconds"),
         hardware_fingerprint=hardware_fingerprint,
         notes=clean_text(notes, max_length=500),
         nonce=uuid.uuid4().hex,
@@ -171,9 +172,7 @@ def parse_license_key(key: str) -> tuple[dict[str, Any], str]:
     return payload, parts[2]
 
 
-def validate_payload_claims(
-    payload: dict[str, Any], *, expected_identity: str | None = None
-) -> None:
+def validate_payload_claims(payload: dict[str, Any], *, expected_identity: str | None = None) -> None:
     """Check product, version and business identity (signature checked separately)."""
     if payload.get("product_id") != __product_id__:
         raise LicenseError("এই লাইসেন্স অন্য প্রোডাক্টের জন্য")
@@ -184,11 +183,10 @@ def validate_payload_claims(
     for field in ("license_id", "business_name", "business_identity", "issued_at"):
         if not payload.get(field):
             raise LicenseError(f"লাইসেন্সে '{field}' অনুপস্থিত")
-    if expected_identity is not None:
-        if clean_text(payload["business_identity"]).casefold() != clean_text(expected_identity).casefold():
-            raise LicenseError(
-                "এই লাইসেন্স অন্য ব্যবসাপ্রতিষ্ঠানের — বিজনেস আইডেন্টিটি মিলছে না"
-            )
+    if expected_identity is not None and (
+        clean_text(payload["business_identity"]).casefold() != clean_text(expected_identity).casefold()
+    ):
+        raise LicenseError("এই লাইসেন্স অন্য ব্যবসাপ্রতিষ্ঠানের — বিজনেস আইডেন্টিটি মিলছে না")
 
 
 # -------------------------------------------------------------- fingerprint
@@ -200,9 +198,7 @@ def collect_hardware_components() -> dict[str, str]:
         try:
             import winreg  # type: ignore[import-not-found]
 
-            with winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography"
-            ) as key:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as key:
                 components["machine_guid"] = str(winreg.QueryValueEx(key, "MachineGuid")[0])
         except Exception:  # noqa: BLE001 - missing key must not block activation
             pass
@@ -225,7 +221,9 @@ def collect_hardware_components() -> dict[str, str]:
     components["processor"] = platform.processor() or platform.machine()
     components["architecture"] = platform.machine()
     try:
-        components["memory_bucket"] = str(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1024**3))
+        components["memory_bucket"] = str(
+            os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1024**3)
+        )
     except (ValueError, AttributeError, OSError):
         components["memory_bucket"] = "unknown"
     return {k: v for k, v in components.items() if v and v != "unknown"}
@@ -243,8 +241,10 @@ def make_fingerprint(components: dict[str, str] | None = None) -> dict[str, Any]
 
 
 def fingerprint_matches(
-    stored: dict[str, Any] | None, current: dict[str, Any] | None,
-    *, min_matches: int = DEFAULT_MIN_MATCHES,
+    stored: dict[str, Any] | None,
+    current: dict[str, Any] | None,
+    *,
+    min_matches: int = DEFAULT_MIN_MATCHES,
 ) -> bool:
     """Tolerant comparison: hardware upgrades must not lock out a valid customer."""
     if not stored:
@@ -270,17 +270,25 @@ def encrypt_private_key(private_b64: str, passphrase: str) -> dict[str, Any]:
     key = Scrypt(salt=salt, length=32, n=2**15, r=8, p=1).derive(passphrase.encode("utf-8"))
     ciphertext = AESGCM(key).encrypt(nonce, _b64d(private_b64), None)
     return {
-        "kdf": "scrypt", "n": 2**15, "r": 8, "p": 1,
-        "salt": _b64e(salt), "nonce": _b64e(nonce),
-        "ciphertext": _b64e(ciphertext), "cipher": "AES-256-GCM",
+        "kdf": "scrypt",
+        "n": 2**15,
+        "r": 8,
+        "p": 1,
+        "salt": _b64e(salt),
+        "nonce": _b64e(nonce),
+        "ciphertext": _b64e(ciphertext),
+        "cipher": "AES-256-GCM",
     }
 
 
 def decrypt_private_key(blob: dict[str, Any], passphrase: str) -> str:
     try:
         key = Scrypt(
-            salt=_b64d(blob["salt"]), length=32,
-            n=int(blob.get("n", 2**15)), r=int(blob.get("r", 8)), p=int(blob.get("p", 1)),
+            salt=_b64d(blob["salt"]),
+            length=32,
+            n=int(blob.get("n", 2**15)),
+            r=int(blob.get("r", 8)),
+            p=int(blob.get("p", 1)),
         ).derive(passphrase.encode("utf-8"))
         raw = AESGCM(key).decrypt(_b64d(blob["nonce"]), _b64d(blob["ciphertext"]), None)
         return _b64e(raw)
@@ -304,9 +312,7 @@ def load_public_key(bundled_path: Path | None = None) -> tuple[str, bool]:
             return str(data["public_key"]), bool(data.get("development", False))
         except (json.JSONDecodeError, KeyError, OSError) as exc:
             raise LicenseError("পাবলিক কী ফাইল পড়া যায়নি") from exc
-    raise LicenseError(
-        "লাইসেন্স যাচাই কী কনফিগার করা নেই — বিল্ডে RETVIA_LICENSE_PUBLIC_KEY সেট করুন"
-    )
+    raise LicenseError("লাইসেন্স যাচাই কী কনফিগার করা নেই — বিল্ডে RETVIA_LICENSE_PUBLIC_KEY সেট করুন")
 
 
 # ---------------------------------------------------------------- activation
@@ -324,7 +330,10 @@ class ActivationService:
         return self._public_key
 
     def activate(
-        self, license_key: str, *, business_identity: str | None = None,
+        self,
+        license_key: str,
+        *,
+        business_identity: str | None = None,
         bind_hardware: bool = False,
     ) -> dict[str, Any]:
         payload, signature = parse_license_key(license_key)
@@ -334,10 +343,7 @@ class ActivationService:
         stored_fp = payload.get("hardware_fingerprint")
         current_fp = make_fingerprint()
         if stored_fp and not fingerprint_matches(stored_fp, current_fp):
-            raise LicenseError(
-                "এই লাইসেন্স অন্য কম্পিউটারের জন্য বাঁধা — "
-                "MERQO-এর কাছে রি-অ্যাক্টিভেশন লাইসেন্স চান"
-            )
+            raise LicenseError("এই লাইসেন্স অন্য কম্পিউটারের জন্য বাঁধা — MERQO-এর কাছে রি-অ্যাক্টিভেশন লাইসেন্স চান")
         record = {
             "license_id": payload["license_id"],
             "product_id": payload["product_id"],
@@ -390,17 +396,17 @@ class ActivationService:
         validate_payload_claims(payload)
         stored_fp = payload.get("hardware_fingerprint")
         if stored_fp and not fingerprint_matches(stored_fp, make_fingerprint()):
-            raise LicenseError(
-                "হার্ডওয়্যার পরিবর্তন শনাক্ত হয়েছে — MERQO-এর কাছে রি-অ্যাক্টিভেশন চান"
-            )
+            raise LicenseError("হার্ডওয়্যার পরিবর্তন শনাক্ত হয়েছে — MERQO-এর কাছে রি-অ্যাক্টিভেশন চান")
         return {"activated": True, **self.status()}
 
     def status(self) -> dict[str, Any]:
         record = self.active_record()
         if record is None:
             return {
-                "activated": False, "app_version": __version__,
-                "product_id": __product_id__, "license_type": "",
+                "activated": False,
+                "app_version": __version__,
+                "product_id": __product_id__,
+                "license_type": "",
             }
         return {
             "activated": True,
@@ -425,13 +431,11 @@ class ActivationService:
             "business_name": record["business_name"] if record else "",
             "business_identity": record["business_identity"] if record else "",
             "current_fingerprint": make_fingerprint(),
-            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         }
 
     def export_recovery_request(self, path: Path | str) -> Path:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(self.recovery_request(), ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        target.write_text(json.dumps(self.recovery_request(), ensure_ascii=False, indent=2), encoding="utf-8")
         return target

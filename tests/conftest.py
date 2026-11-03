@@ -134,18 +134,14 @@ def purchases(db, settings, audit, inventory, numbering, cash):
 def customer_payments(db, settings, audit, numbering, cash):
     from retvia.services.payments import CustomerPaymentService
 
-    return CustomerPaymentService(
-        db, settings=settings, audit=audit, numbering=numbering, cash=cash
-    )
+    return CustomerPaymentService(db, settings=settings, audit=audit, numbering=numbering, cash=cash)
 
 
 @pytest.fixture()
 def supplier_payments(db, settings, audit, numbering, cash):
     from retvia.services.payments import SupplierPaymentService
 
-    return SupplierPaymentService(
-        db, settings=settings, audit=audit, numbering=numbering, cash=cash
-    )
+    return SupplierPaymentService(db, settings=settings, audit=audit, numbering=numbering, cash=cash)
 
 
 @pytest.fixture()
@@ -153,8 +149,13 @@ def sales_returns(db, settings, audit, inventory, numbering, cash, customer_paym
     from retvia.services.returns import SalesReturnService
 
     return SalesReturnService(
-        db, settings=settings, audit=audit, inventory=inventory, numbering=numbering,
-        cash=cash, customer_payments=customer_payments,
+        db,
+        settings=settings,
+        audit=audit,
+        inventory=inventory,
+        numbering=numbering,
+        cash=cash,
+        customer_payments=customer_payments,
     )
 
 
@@ -163,8 +164,13 @@ def purchase_returns(db, settings, audit, inventory, numbering, cash, supplier_p
     from retvia.services.returns import PurchaseReturnService
 
     return PurchaseReturnService(
-        db, settings=settings, audit=audit, inventory=inventory, numbering=numbering,
-        cash=cash, supplier_payments=supplier_payments,
+        db,
+        settings=settings,
+        audit=audit,
+        inventory=inventory,
+        numbering=numbering,
+        cash=cash,
+        supplier_payments=supplier_payments,
     )
 
 
