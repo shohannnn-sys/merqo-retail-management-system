@@ -69,6 +69,7 @@ class InventoryService:
         movement_date: str,
         unit_cost: int | None = None,
         received_value: int | None = None,
+        issued_value: int | None = None,
         reference_type: str = "",
         reference_id: int | None = None,
         notes: str = "",
@@ -141,8 +142,11 @@ class InventoryService:
         else:
             # ---- issue: cost at the prevailing MAC (snapshotted for the caller)
             cost = int(unit_cost if unit_cost is not None else avg_before)
-            issued = round_div(cost * (-qty_delta), MILLI_PER_UNIT)
-            if qty_after == 0:
+            issued = (
+                int(issued_value) if issued_value is not None
+                else round_div(cost * (-qty_delta), MILLI_PER_UNIT)
+            )
+            if qty_after == 0 and issued_value is None:
                 # Clear any residual rounding so an empty shelf has zero value.
                 issued = value_before
             value_after = value_before - issued

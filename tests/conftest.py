@@ -119,3 +119,57 @@ def sales(db, settings, audit, inventory, numbering, cash):
 @pytest.fixture()
 def open_shift(cash):
     return cash.open_session(opening_cash=100_000, actor="tester")
+
+
+@pytest.fixture()
+def purchases(db, settings, audit, inventory, numbering, cash):
+    from retvia.services.purchases import PurchaseService
+
+    return PurchaseService(
+        db, settings=settings, audit=audit, inventory=inventory, numbering=numbering, cash=cash
+    )
+
+
+@pytest.fixture()
+def customer_payments(db, settings, audit, numbering, cash):
+    from retvia.services.payments import CustomerPaymentService
+
+    return CustomerPaymentService(
+        db, settings=settings, audit=audit, numbering=numbering, cash=cash
+    )
+
+
+@pytest.fixture()
+def supplier_payments(db, settings, audit, numbering, cash):
+    from retvia.services.payments import SupplierPaymentService
+
+    return SupplierPaymentService(
+        db, settings=settings, audit=audit, numbering=numbering, cash=cash
+    )
+
+
+@pytest.fixture()
+def sales_returns(db, settings, audit, inventory, numbering, cash, customer_payments):
+    from retvia.services.returns import SalesReturnService
+
+    return SalesReturnService(
+        db, settings=settings, audit=audit, inventory=inventory, numbering=numbering,
+        cash=cash, customer_payments=customer_payments,
+    )
+
+
+@pytest.fixture()
+def purchase_returns(db, settings, audit, inventory, numbering, cash, supplier_payments):
+    from retvia.services.returns import PurchaseReturnService
+
+    return PurchaseReturnService(
+        db, settings=settings, audit=audit, inventory=inventory, numbering=numbering,
+        cash=cash, supplier_payments=supplier_payments,
+    )
+
+
+@pytest.fixture()
+def expenses(db, settings, audit, numbering, cash):
+    from retvia.services.expenses import ExpenseService
+
+    return ExpenseService(db, settings=settings, audit=audit, numbering=numbering, cash=cash)
