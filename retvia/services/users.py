@@ -21,6 +21,7 @@ SCRYPT_N = 2**15
 SCRYPT_R = 8
 SCRYPT_P = 1
 KEY_LENGTH = 32
+SCRYPT_MAXMEM = 64 * 1024 * 1024
 HASH_PARAMS = f"scrypt:{SCRYPT_N}:{SCRYPT_R}:{SCRYPT_P}"
 MIN_PASSWORD_LENGTH = 8
 MAX_FAILED_ATTEMPTS = 5
@@ -107,7 +108,7 @@ def verify_password(password: str, password_hash: str, salt: str) -> bool:
             dklen=KEY_LENGTH,
             maxmem=64 * 1024 * 1024,
         )
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, MemoryError, OverflowError):
         return False
     return hmac.compare_digest(derived.hex(), password_hash)
 

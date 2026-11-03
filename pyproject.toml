@@ -16,7 +16,8 @@ include = ["retvia*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-q --strict-markers"
+addopts = "-q --strict-markers -rfE"
+faulthandler_timeout = 180
 markers = [
     "slow: performance tests with large synthetic datasets",
     "gui: requires a Qt platform plugin (runs on Windows CI)",
